@@ -169,12 +169,13 @@ export class Pipeline {
     hooks.beforeReflection && hooks.beforeReflection(this.reflCam);
     r.shadowMap.autoUpdate = false;
     r.setRenderTarget(this.rtRefl); r.clear(true, true, false);
-    r.render(scene, this.reflCam);
+    if (!this.skipRefl) r.render(scene, this.reflCam);
     r.shadowMap.autoUpdate = true;
     hooks.afterReflection && hooks.afterReflection();
     // 2. opaque scene
     cam.layers.set(LAYER.MAIN); cam.layers.enable(LAYER.NOREFL);
     r.setRenderTarget(this.rtMain); r.clear(true, true, false);
+    if (this.skipShadow) r.shadowMap.autoUpdate = false;
     r.render(scene, cam);
     // 3. refraction copy
     this.copyMat.uniforms.tSrc.value = this.rtMain.texture;

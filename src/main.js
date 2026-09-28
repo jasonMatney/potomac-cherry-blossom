@@ -10,7 +10,7 @@ import { Pipeline, LAYER } from './post.js';
 import { bakeMaps, buildWater, stepSim, W, SIM, simProbe, updatePatchFrame } from './water.js';
 import { buildMaterials, M, NIGHT_EMISSIVE } from './mats.js';
 import { buildLandmarks } from './landmarks.js';
-import { buildVegetation, ROCKS, cullVeg, cullVegDyn, reflCull } from './veg.js';
+import { buildVegetation, ROCKS, cullVeg, cullVegDyn, reflCull, VEG } from './veg.js';
 import { LIGHTS, inSolid, addLight, walkBlocked } from './registry.js';
 import { buildBoatModel, Boat, buildLane, laneAt } from './boat.js';
 import { Skipper, Woman, Groundskeeper } from './actors.js';
@@ -101,6 +101,7 @@ window.addEventListener('keydown', (e) => {
   if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && APP.boat) APP.boat.keys.boost = true;
   if (e.code === 'KeyM' && !e.repeat) audio.toggleMute();
   if (e.code === 'KeyP' && !e.repeat) perf.toggle();
+  if (e.code === 'KeyB' && !e.repeat && perf.on && !perf.bench) { perf.res = null; perf.startBench(); }
   if ((e.code === 'KeyE' || e.code === 'Enter') && !e.repeat && APP.stops) APP.stops.action();
   const dg = /^(Digit|Numpad)([0-6])$/.exec(e.code); if (dg && !e.repeat) pickSong(+dg[2]);
 });
@@ -210,22 +211,51 @@ async function init() {
 // down, once per measurement window, so the resolution never oscillates and causes repeated hitches.
 // hidden performance readout (P): frame rate, slow-frame times, quality tier, render cost; off by default
 const perf = {
-  el: null, on: false, ms: [], acc: 0,
+  el: null, on: false, ms: [], cpu: [], acc: 0, bench: null, res: null,
   toggle() {
     this.on = !this.on;
     if (!this.el) { this.el = document.createElement('div'); Object.assign(this.el.style, { position: 'fixed', left: '10px', top: '10px', zIndex: 50, font: '12px/1.45 ui-monospace,Menlo,Consolas,monospace', color: '#fff', background: 'rgba(0,0,0,0.62)', padding: '8px 10px', borderRadius: '8px', whiteSpace: 'pre', pointerEvents: 'none' }); document.body.appendChild(this.el); }
-    this.el.style.display = this.on ? 'block' : 'none'; this.ms = []; this.acc = 0;
+    this.el.style.display = this.on ? 'block' : 'none'; this.ms = []; this.cpu = []; this.acc = 0; this.res = null; if (this.bench) { this.bench.states[this.bench.i][2](); this.bench = null; }
   },
-  frame(raw) {
+  // B: time the frame with one feature off at a time, to see what the machine is actually short of
+  startBench() {
+    const V = () => VEG;
+    this.bench = { i: 0, t: 0, ms: [], cpu: [], rows: [], states: [
+      ['everything on', () => {}, () => {}],
+      ['no reflection', () => { pipeline.skipRefl = true; }, () => { pipeline.skipRefl = false; }],
+      ['no shadows', () => { pipeline.skipShadow = true; }, () => { pipeline.skipShadow = false; }],
+      ['no trees', () => { V().off = true; }, () => { V().off = false; }],
+      ['no wave sim', () => { APP.noSim = true; }, () => { APP.noSim = false; }],
+      ['half resolution', () => { scale = TIERS[tier].scale * 0.5; resize(); }, () => { scale = TIERS[tier].scale; resize(); }],
+      ['all off', () => { pipeline.skipRefl = pipeline.skipShadow = true; V().off = true; APP.noSim = true; scale = TIERS[tier].scale * 0.5; resize(); }, () => { pipeline.skipRefl = pipeline.skipShadow = false; V().off = false; APP.noSim = false; scale = TIERS[tier].scale; resize(); }],
+    ] };
+    this.bench.states[0][1]();
+  },
+  benchFrame(raw, cpu) {
+    const B = this.bench; B.t += raw;
+    if (B.t > 1.2) { B.ms.push(raw * 1000); B.cpu.push(cpu); }
+    if (B.t < 3.4) { this.el.textContent = `measuring ${B.i + 1}/${B.states.length}: ${B.states[B.i][0]}…`; return; }
+    const avg = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
+    B.rows.push([B.states[B.i][0], avg(B.ms), avg(B.cpu)]); B.states[B.i][2]();
+    B.i++; B.t = 0; B.ms = []; B.cpu = [];
+    if (B.i < B.states.length) { B.states[B.i][1](); return; }
+    const gl = renderer.getContext(); const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    this.res = 'feature test (frame ms · cpu ms)\n' + B.rows.map(([n, f, c]) => `${n.padEnd(16)} ${f.toFixed(1).padStart(6)} · ${c.toFixed(1).padStart(5)}`).join('\n') + `\n\ntier ${tier} · scale ${TIERS[tier].scale} · canvas ${renderer.domElement.width}×${renderer.domElement.height} · ${dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '?'}\n${navigator.userAgent.replace(/^.*?\) /, '')}`;
+    this.bench = null; this.el.textContent = this.res; this.acc = -5;
+  },
+  frame(raw, cpu = 0) {
     if (!this.on || raw <= 0 || raw > 5) return;
-    this.ms.push(raw * 1000); this.acc += raw; if (this.acc < 0.5) return;
+    if (this.bench) { this.benchFrame(raw, cpu); return; }
+    if (this.res) return;
+    this.ms.push(raw * 1000); this.cpu.push(cpu); this.acc += raw; if (this.acc < 0.5) return;
     const a = this.ms.slice().sort((x, y) => x - y), n = a.length, avg = a.reduce((x, y) => x + y, 0) / n;
     const p95 = a[Math.min(n - 1, Math.floor(n * 0.95))], worst = a[n - 1];
     const ri = renderer.info.render, gl = renderer.getContext(); const dbg = gl.getExtension('WEBGL_debug_renderer_info');
     const gpu = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '?';
     const where = APP.skipper && APP.skipper.onFoot ? (APP.home && APP.stops && APP.stops.cur && APP.stops.cur.id === 'home' ? (APP.home.camInside ? 'on foot, inside house' : 'on foot, at house') : 'on foot, ' + (APP.stops.cur ? APP.stops.cur.id : '')) : 'boat, s ' + (APP.boat ? APP.boat.s.toFixed(0) : '?');
-    this.el.textContent = `fps      ${(1000 / avg).toFixed(0)}\nframe    ${avg.toFixed(1)} ms avg · ${p95.toFixed(1)} p95 · ${worst.toFixed(0)} worst\ntier     ${tier} of ${TIERS.length - 1} (0 = best) · scale ${TIERS[tier].scale} · drops ${gov.downs}\ncanvas   ${renderer.domElement.width}×${renderer.domElement.height} @ dpr ${devicePixelRatio}\ndraws    ${ri.calls} · tris ${(ri.triangles / 1000).toFixed(0)}k\nbench    ${APP.bench ? APP.bench.med + ' ms → tier ' + APP.bench.pick : '-'}\nwhere    ${where} · hour ${APP.S.hour.toFixed(1)}\ngpu      ${gpu}`;
-    this.ms = []; this.acc = 0;
+    const cpuAvg = this.cpu.reduce((x, y) => x + y, 0) / Math.max(1, this.cpu.length);
+    this.el.textContent = `fps      ${(1000 / avg).toFixed(0)}\ncpu      ${cpuAvg.toFixed(1)} ms of each frame spent in script (rest is the graphics chip)\nframe    ${avg.toFixed(1)} ms avg · ${p95.toFixed(1)} p95 · ${worst.toFixed(0)} worst\ntier     ${tier} of ${TIERS.length - 1} (0 = best) · scale ${TIERS[tier].scale} · drops ${gov.downs}\ncanvas   ${renderer.domElement.width}×${renderer.domElement.height} @ dpr ${devicePixelRatio}\ndraws    ${ri.calls} · tris ${(ri.triangles / 1000).toFixed(0)}k\nbench    ${APP.bench ? APP.bench.med + ' ms → tier ' + APP.bench.pick : '-'}\nwhere    ${where} · hour ${APP.S.hour.toFixed(1)}\ngpu      ${gpu}`;
+    this.el.textContent += '\n\npress B for a 25-second feature test'; this.ms = []; this.cpu = []; this.acc = 0;
   },
 };
 let last = 0, dtS = 1 / 60;
@@ -241,8 +271,9 @@ function loop(now) {
   const clamped = Math.min(raw, 0.1);
   dtS += (clamped - dtS) * (Math.abs(clamped - dtS) > 0.03 ? 1 : 0.25);
   if (perf.on) { renderer.info.autoReset = false; renderer.info.reset(); } else renderer.info.autoReset = true;
+  const c0 = performance.now();
   step(Math.min(dtS, 0.1));
-  perf.frame(raw);
+  perf.frame(raw, performance.now() - c0);
   if (document.hidden || raw > 0.25) return; // ignore tab switches and one-off stalls
   gov.t += raw; if (gov.t < gov.settle) return;
   gov.samples.push(raw * 1000);
@@ -335,7 +366,7 @@ function step(dt, render = true) {
   const [bfx, bfz] = boat.fwd();
   const heroSim = { s: boat.s, d: boat.d, relHeading: boat.psi - frame(boat.s).th, speed: boat.u, halfLen: 3.1, halfBeam: 1.1, strength: 1, prop: clamp(Math.abs(boat.throttle) * 1.3, 0, 1) };
   APP.simAcc = (APP.simAcc || 0) + dt; APP.simFrame = (APP.simFrame || 0) + 1;
-  if (APP.simFrame % TIERS[tier].simEvery === 0) { stepSim(renderer, APP.simAcc, t, boat.s, boat.d, [heroSim, ...APP.traffic.simBoats(), APP.odyssey.simBoat(), ...APP.rowing.simBoats()], S.rain, TIERS[tier].simEvery === 2 ? 1 : 3); APP.simAcc = 0; }
+  if (APP.simFrame % TIERS[tier].simEvery === 0 && !APP.noSim) { stepSim(renderer, APP.simAcc, t, boat.s, boat.d, [heroSim, ...APP.traffic.simBoats(), APP.odyssey.simBoat(), ...APP.rowing.simBoats()], S.rain, TIERS[tier].simEvery === 2 ? 1 : 3); APP.simAcc = 0; }
   wu.tSim.value = SIM.rtA.texture; wu.uSimO.value.set(SIM.sMin, SIM.dMin);
   updatePatchFrame();
   // wave heights under the hero's hull corners and at each traffic boat, read back from the simulation

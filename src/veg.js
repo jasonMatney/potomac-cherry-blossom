@@ -22,6 +22,7 @@ export function cullVeg(cam, k = 1) { for (const m of VEG.far) { const bs = m.bo
 // pass can draw just the near part. Rebuilt when the camera has moved or turned enough.
 const _fr = new THREE.Frustum(), _pm = new THREE.Matrix4(), _sp = new THREE.Sphere(), _cf = new V3();
 const _last = { p: new V3(1e9, 0, 0), f: new V3(), t: 0, k: -1 };
+const LEAF_LOD = 150;
 export function cullVegDyn(camera, k = 1, now = 0) {
   camera.getWorldDirection(_cf);
   const moved = _last.p.distanceTo(camera.position) > 1.5 || _last.f.dot(_cf) < 0.9994 || now - _last.t > 0.6 || k !== _last.k;
@@ -34,18 +35,18 @@ export function cullVegDyn(camera, k = 1, now = 0) {
     const near = [], far = [];
     for (let i = 0; i < n; i++) {
       const x = sph[i * 4], y = sph[i * 4 + 1], z = sph[i * 4 + 2], r = sph[i * 4 + 3];
-      const d = Math.hypot(x - cx, z - cz) - r; if (d > md) continue;
+      const dc = Math.hypot(x - cx, z - cz); if (dc < e.minDist || dc >= e.lodMax) continue; const d = dc - r; if (d > md) continue;
       _sp.center.set(x, y, z); _sp.radius = r + 3;
       let vis = _fr.intersectsSphere(_sp);
       if (!vis) { _sp.center.y = -y; vis = _fr.intersectsSphere(_sp); }
-      if (vis) (d < 480 ? near : far).push(i);
+      if (vis) (d < 480 * k ? near : far).push(i);
     }
     let w = 0;
     for (const list of [near, far]) for (const i of list) { arr.set(mats.subarray(i * 16, i * 16 + 16), w * 16); if (carr) carr.set(cols.subarray(i * 3, i * 3 + 3), w * 3); w++; }
     im.count = w; e.near = near.length;
     im.instanceMatrix.clearUpdateRanges(); im.instanceMatrix.addUpdateRange(0, w * 16); im.instanceMatrix.needsUpdate = true;
     if (carr) { im.instanceColor.clearUpdateRanges(); im.instanceColor.addUpdateRange(0, w * 3); im.instanceColor.needsUpdate = true; }
-    im.visible = w > 0;
+    im.visible = w > 0 && !VEG.off;
   }
 }
 
@@ -264,6 +265,21 @@ function makeMats() {
   M.rock.defines.MOSS_K = '0.85';
 }
 
+
+// lighter leaves for distant trees: every other card, each grown to keep the crown's coverage
+function leafLOD(g) {
+  const out = g.clone(); const P = out.attributes.position; const src = g.index.array; const idx = [];
+  const nCards = src.length / 6;
+  for (let q = 0; q < nCards; q++) {
+    if (q % 2) continue;
+    const b = src[q * 6]; let cx = 0, cy = 0, cz = 0;
+    for (let k = 0; k < 4; k++) { cx += P.getX(b + k); cy += P.getY(b + k); cz += P.getZ(b + k); }
+    cx /= 4; cy /= 4; cz /= 4;
+    for (let k = 0; k < 4; k++) P.setXYZ(b + k, cx + (P.getX(b + k) - cx) * 1.38, cy + (P.getY(b + k) - cy) * 1.38, cz + (P.getZ(b + k) - cz) * 1.38);
+    for (let k = 0; k < 6; k++) idx.push(src[q * 6 + k]);
+  }
+  out.setIndex(idx); return out;
+}
 // ---------------------------------------------------------------- instancing helpers
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new V3(), _p = new V3(), _c = new THREE.Color();
 function instGroups(scene, variants, placements, { cast = true, layer = 0, leafMat, barkMatOf } = {}) {
@@ -280,16 +296,17 @@ function instGroups(scene, variants, placements, { cast = true, layer = 0, leafM
       const h = (v.height || 8) * pl.s; sph[i * 4] = pl.x; sph[i * 4 + 1] = pl.y + h * 0.5; sph[i * 4 + 2] = pl.z; sph[i * 4 + 3] = Math.max(h * 0.6, (v.crownR || 3) * pl.s + 1);
       cols[i * 3] = pl.tint[0]; cols[i * 3 + 1] = pl.tint[1]; cols[i * 3 + 2] = pl.tint[2];
     });
-    for (const part of ['bark', 'leaves']) {
+    if (!v.leavesFar) v.leavesFar = leafLOD(v.leaves);
+    for (const part of ['bark', 'leaves', 'leavesFar']) {
       const geo = v[part];
       const mat = part === 'bark' ? barkMatOf(v) : (v.leafMat || leafMat);
       const im = new THREE.InstancedMesh(geo, mat, n);
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      if (part === 'leaves') { im.setColorAt(0, _c.setRGB(1, 1, 1)); im.instanceColor.setUsage(THREE.DynamicDrawUsage); }
+      if (part !== 'bark') { im.setColorAt(0, _c.setRGB(1, 1, 1)); im.instanceColor.setUsage(THREE.DynamicDrawUsage); }
       im.count = 0; im.frustumCulled = false;
       im.castShadow = cast; im.receiveShadow = true; im.layers.set(part === 'bark' ? LAYER.NOREFL : layer);
       im.customDepthMaterial = mat.customDepthMaterial;
-      VEG.dyn.push({ im, mats, sph, cols: part === 'leaves' ? cols : null, n, maxDist: part === 'bark' ? 450 : 1150, near: 0 });
+      VEG.dyn.push({ im, mats, sph, cols: part === 'bark' ? null : cols, n, maxDist: part === 'bark' ? 450 : 1150, minDist: part === 'leaves' ? 0 : part === 'leavesFar' ? LEAF_LOD : 0, lodMax: part === 'leaves' ? LEAF_LOD : 1e9, near: 0 });
       scene.add(im); meshes.push(im);
     }
   }

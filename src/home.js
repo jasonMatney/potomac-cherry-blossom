@@ -40,11 +40,18 @@ function textures() {
 class Builder {
   constructor() { this.parts = new Map(); }
   add(part, mat, geo, cast = true) { const k = part; if (!this.parts.has(k)) this.parts.set(k, new Map()); const m = this.parts.get(k); if (!m.has(mat)) m.set(mat, { list: [], cast }); m.get(mat).list.push(geo); }
-  build(groups) {
+  build(groups, far) {
+    const farMats = new Map();
     for (const [part, mats] of this.parts) {
       const g = groups[part] || (groups[part] = new THREE.Group());
-      for (const [mat, e] of mats) { const geo = merge(e.list); const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = e.cast; mesh.receiveShadow = true; g.add(mesh); }
+      const outer = /^(out|roof|chim|sun|sunroof|trimOut|w\d)/.test(part);
+      for (const [mat, e] of mats) {
+        const geo = merge(e.list); const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = e.cast; mesh.receiveShadow = true; g.add(mesh);
+        if (far && outer) { if (!farMats.has(mat)) farMats.set(mat, []); farMats.get(mat).push(geo); }
+      }
     }
+    // seen from a distance the house is just its outside: one mesh per material instead of hundreds of parts
+    if (far) for (const [mat, list] of farMats) { const mesh = new THREE.Mesh(merge(list), mat); mesh.castShadow = true; mesh.receiveShadow = true; far.add(mesh); }
   }
 }
 const B3 = (x0, x1, y0, y1, z0, z1) => box(x1 - x0, y1 - y0, z1 - z0, { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (z0 + z1) / 2 });
@@ -428,7 +435,7 @@ export class Home {
     const dockW = (s, e, y) => this.toLocal(...(() => { const [x, z] = fromSD(s, -(hwL(s) + e)); return [x, y, z]; })());
     this.flights = [
       { a: new V3(5.4, 0, -6.9), b: new V3(13.2, -4.45, -10.7), w: 1.25 },
-      { a: new V3(14.0, -4.45, -12.3), b: new V3(6.4, -8.85, -16.3), w: 1.25 },
+      { a: new V3(12.6, -4.45, -12.2), b: new V3(6.4, -8.85, -16.3), w: 1.25 },
     ];
     this.landing = { x0: 12.6, x1: 15.0, z0: -12.9, z1: -10.1, y: -4.45 };
     const stepsOf = (fl) => {
@@ -475,8 +482,9 @@ export class Home {
     this.landP = this.toWorld(6.4, dy, -26.55);
     // garden: a bench and flower beds on the terrace behind the house, a path of stepping stones to the porch
     b.add('out', m.darkwood, B3(-2.0, 2.0, -0.35 + 0.0, -0.3, 6.2, 6.7)); for (const x of [-1.8, 1.8]) b.add('out', m.darkwood, B3(x - 0.04, x + 0.04, -0.35 - 0.45, -0.35, 6.3, 6.6));
-    for (let i = 0; i < 26; i++) { const x = -5 + (i % 13) * 0.8, z = i < 13 ? 5.6 : 7.4; const c = [0xd84a6a, 0xf0c040, 0xf4f1ea, 0x9a6ad8][i % 4]; b.add('out', std({ color: c, roughness: 0.8 }, { wet: 0.5 }), sph(0.16, 8, 6, { x, y: -0.3, z }), false); }
-    this.B.build(this.groupsFor());
+    for (let i = 0; i < 26; i++) { const x = -5 + (i % 13) * 0.8, z = i < 13 ? 5.6 : 7.4; const c = [0xd84a6a, 0xf0c040, 0xf4f1ea, 0x9a6ad8][i % 4]; this.flowerM = this.flowerM || {}; const fm = this.flowerM[c] || (this.flowerM[c] = std({ color: c, roughness: 0.8 }, { wet: 0.5 })); b.add('out', fm, sph(0.16, 8, 6, { x, y: -0.3, z }), false); }
+    this.far = new THREE.Group(); this.far.visible = false; this.g.add(this.far);
+    this.B.build(this.groupsFor(), this.far);
   }
   groupsFor() {
     const G = {};
@@ -521,7 +529,7 @@ export class Home {
     const dg = box(0.96, 2.26, 0.06, { x: 0.48, y: 1.13 }); boxUV(dg, 0.5);
     const door = new THREE.Mesh(dg, std({ color: 0x2f4a3a, roughness: 0.5 }, { wet: 0.6 })); door.castShadow = true; leaf.add(door);
     const knob = new THREE.Mesh(sph(0.035, 8, 6, { x: 0.85, y: 1.0, z: -0.05 }), this.m.steel); leaf.add(knob);
-    g.add(leaf); this.door = leaf; this.doorA = 0;
+    this.g.add(leaf); this.door = leaf; this.doorA = 0;
     // the cat
     this.cat = makeCat(); g.add(this.cat.g);
     this.catState = { p: new V3(3.6, FY[0], 1.4), yaw: 1.2, mode: 'sit', t: 0, target: null, meowT: 6, purr: false };
@@ -568,11 +576,15 @@ export class Home {
       const ab = new V3(fl.b.x - fl.a.x, 0, fl.b.z - fl.a.z); const L2 = ab.lengthSq(); const ap = new V3(p.x - fl.a.x, 0, p.z - fl.a.z);
       const t = ap.dot(ab) / L2; if (t < -0.08 || t > 1.08) continue;
       const perp = ap.clone().addScaledVector(ab, -t).length(); if (perp > fl.w / 2 - 0.05) continue;
-      consider(lerp(fl.a.y, fl.b.y, clamp(t, 0, 1)));
+      const fy = lerp(fl.a.y, fl.b.y, clamp(t, 0, 1));
+      if (t > 0.06 && t < 0.94 && Math.abs(fy - yc) < 0.65) return fy + this.y0;
+      consider(fy);
     }
     // open ground around the house (not inside it, not in the water)
     const gW = groundAt(x, z);
-    if (gW > 0.05 && !(Math.abs(p.x) < HX + 0.1 && Math.abs(p.z) < HZ + 0.1)) consider(gW - this.y0);
+    // (not the steep bluff the dock stairs run down: there he stays on the treads, landing and railings)
+    const onBluff = p.x > 1.4 && p.x < 17 && p.z > -16.2 && p.z < -6.6;
+    if (gW > 0.05 && !onBluff && !(Math.abs(p.x) < HX + 0.1 && Math.abs(p.z) < HZ + 0.1)) consider(gW - this.y0);
     return best === null || bd > 0.65 ? null : best + this.y0;
   }
   blocked(x, z, yW, r = 0.25) {
@@ -591,7 +603,7 @@ export class Home {
   // ---------------------------------------------------------------- navigation graph for the automatic walk
   nav() {
     const N = {
-      thead: [6.4, this.thead.y, -26.55], pierRoot: [6.4, this.pier.y, -16.2], dBottom: [6.6, -8.85, -16.1], land1: [13.6, -4.45, -11.2], land2: [13.9, -4.45, -12.0],
+      thead: [6.4, this.thead.y, -26.55], pierRoot: [6.4, this.pier.y, -16.2], dBottom: [6.6, -8.85, -16.1], land1: [13.6, -4.45, -11.2], land2: [13.1, -4.45, -12.2],
       cTop: [5.6, 0, -6.75], porch: [3.9, 0, -5.4], doorOut: [2.9, 0, -5.0], doorIn: [2.9, 0, -3.8], living: [1.5, 0, -1.9], sofaSpot: [3.4, 0, -1.8], fireSide: [4.7, 0, -1.2], hearth: [4.55, 0, 0],
       dining: [-1.0, 0, -0.6], kitchen: [-1.45, 0, 3.12], stove: [-3.4, 0, 3.2], sunIn: [-2.7, 0, -4.0], sunroom: [-2.8, 0, -5.9],
       stairFoot: [0.2, 0, 2.7], aBottom: [0.35, 0, 3.85], aTop: [5.4, FY[1], 3.85], landingB: [5.45, FY[1], 2.75], bedDoor: [5.45, FY[1], 1.6], bedroom: [4.9, FY[1], 0.2], bedSide: [4.75, FY[1], 0.9], bedCorner: [4.95, FY[1], -0.95], bedFoot: [3.3, FY[1], -1.25],
@@ -654,6 +666,10 @@ export class Home {
     if (near2 !== this.nearOn) { this.nearOn = near2; for (const f of this.floors) { if (f.inner) f.inner.visible = near2; } this.cat.g.visible = near2; }
     if (near2) this.updateCat(dt, t, player);
     this.cutaway(player, playerInside, camera);
+    const far = cd > 70 && !playerInside;
+    this.far.visible = far;
+    if (far) { for (const f of this.floors) f.group.visible = false; this.roof.visible = false; this.outside.visible = false; this.trimOut.visible = false; }
+    else this.outside.visible = true;
   }
   cutaway(player, inside, camera) {
     this.camInside = inside;
