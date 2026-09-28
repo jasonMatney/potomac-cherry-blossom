@@ -1,0 +1,24 @@
+{
+  "name": "potomac-cherry-blossom",
+  "version": "1.0.0",
+  "description": "A cinematic 3D cruise up the Potomac through DC in cherry-blossom season, built as a single HTML file with three.js.",
+  "scripts": {
+    "build": "node build.mjs --min",
+    "build:dev": "node build.mjs",
+    "prep-assets": "node tools/prep.mjs"
+  },
+  "keywords": [],
+  "author": "Jason Matney",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.0",
+    "@gltf-transform/extensions": "^4.5.0",
+    "@gltf-transform/functions": "^4.5.0",
+    "sharp": "^0.35.4"
+  },
+  "private": true
+}
