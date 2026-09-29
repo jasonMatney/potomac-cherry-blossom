@@ -457,13 +457,8 @@ export function buildWater(scene, renderer, pipeline) {
         // --- reflection
         vec4 rc = uReflVP * vec4(vWPos.x, level, vWPos.z, 1.0);
         vec2 rUv = rc.xy / rc.w * 0.5 + 0.5;
-        rUv += vec2(N.x * 0.02, N.z * 0.05) * (0.3 + 0.7*farK) + vec2(0.0, wakeH * 0.05);
-        // river water is no mirror: the reflection is softened (smeared along the view by the ripples) and dimmed
-        vec2 rs = vec2(0.0, 0.007 * (0.4 + 0.6*farK));
-        vec3 refl = (texture2D(tRefl, clamp(rUv, 0.002, 0.998)).rgb * 0.4
-                   + texture2D(tRefl, clamp(rUv + rs, 0.002, 0.998)).rgb * 0.3
-                   + texture2D(tRefl, clamp(rUv - rs, 0.002, 0.998)).rgb * 0.3);
-        refl = min(refl, vec3(5.0)) * vec3(0.6, 0.64, 0.62);
+        rUv += vec2(N.x * 0.012, N.z * 0.03) * (0.3 + 0.7*farK) + vec2(0.0, wakeH * 0.05);
+        vec3 refl = min(texture2D(tRefl, clamp(rUv, 0.002, 0.998)).rgb, vec3(5.0));
         // --- refraction + absorption (green-brown)
         vec2 sUv2 = gl_FragCoord.xy / uRes;
         float refrK = clamp(depth*0.6, 0.0, 1.0);
@@ -479,8 +474,7 @@ export function buildWater(scene, renderer, pipeline) {
         // --- fresnel
         float F0 = 0.02;
         float fres = F0 + (1.0 - F0)*pow(1.0 - max(dot(N, V), 0.0), 5.0);
-        fres = mix(fres, 1.0, smoothstep(250.0, 1200.0, dist)*0.3);
-        fres = min(fres, 0.55); // even at grazing angles the river never turns into a mirror
+        fres = mix(fres, 1.0, smoothstep(250.0, 1200.0, dist)*0.5);
         vec3 col = mix(under, refl, fres);
         // --- sun / moon specular
         vec3 Rv = reflect(-V, N);
