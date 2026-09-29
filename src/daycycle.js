@@ -67,7 +67,7 @@ const K = [
 K.forEach((k) => { for (const f of ['zen', 'hor', 'sun', 'amb', 'fog', 'glow']) k[f] = hx(k[f]); });
 
 export const S = {
-  t: 0, f: 0, hour: 8, speed: 1, storm: 0, rain: 0, wet: 0, night: 0, twilight: 0,
+  t: 0, f: 0, day: 0, hour: 8, speed: 1, storm: 0, rain: 0, wet: 0, night: 0, twilight: 0,
   sunDir: new THREE.Vector3(), moonDir: new THREE.Vector3(), keyDir: new THREE.Vector3(),
   sunEl: 0, moonEl: 0, keyIsMoon: false,
   zen: new THREE.Color(), hor: new THREE.Color(), sunCol: new THREE.Color(), sunI: 0,
@@ -94,7 +94,9 @@ const gray = new THREE.Color(0x70767e), stormFog = new THREE.Color(0x5e646c), st
 let wet = 0;
 export function updateCycle(dt) {
   S.t += dt * S.speed;
+  const f0 = S.f;
   S.f = (S.t / CYCLE) % 1;
+  if (S.f < f0 - 0.5) S.day++; // past midnight
   const f = S.f;
   S.hour = hourAt(f);
   const h = S.hour;
@@ -140,5 +142,6 @@ export function updateCycle(dt) {
 }
 export function setHour(h) {
   const f = fracForHour(h);
-  S.t = f * CYCLE;
+  if (f < S.f) S.day++; // jumping to an earlier hour means the next day (e.g. waking up after sleeping)
+  S.t = f * CYCLE; S.f = f;
 }

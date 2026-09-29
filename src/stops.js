@@ -10,6 +10,7 @@ import { box, rbox, cyl, sph, merge, tf, boxUV, ensureColor } from './geo.js';
 import { M } from './mats.js';
 import { makeSkipperChar } from './outfits.js';
 import { grip } from './actors.js';
+import { S as DAY } from './daycycle.js';
 import { laneAt } from './boat.js';
 
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
@@ -208,7 +209,7 @@ export class Stops {
     Object.assign(this, o); // scene, boat, skipper, audio, camera
     this.defs = stopDefs();
     if (o.home) this.defs.push(this.homeDef(o.home));
-    this.visitDone = {};
+    this.visitDone = {}; this.dayDone = {}; this.today = {};
     this.state = 'cruise'; this.cur = null; this.t = 0; this.keysIdle = 0; this.done = {};
     this.focus = null; this.offer = null;
     this.char = this.skipper.c; this.rig = this.skipper.rig;
@@ -279,7 +280,7 @@ export class Stops {
       pint.position.copy(seat).setY(ty + topH + 0.075).addScaledVector(faceDir, 0.42).add(new V3(F.fx, 0, F.fz).multiplyScalar(0.2));
       sc.add(pint); this.pintHome = pint.position.clone();
       // override the stop's spot to stand at the end of the bench
-      S.spotP = seat.clone().addScaledVector(faceDir, 0.05).addScaledVector(new V3(F.fx, 0, F.fz), 1.5); S.spotP.y = groundAt(S.spotP.x, S.spotP.z);
+      S.spotP = seat.clone().addScaledVector(faceDir, 0.05).addScaledVector(new V3(F.fx, 0, F.fz), -1.5); // the end of the bench nearest the path S.spotP.y = groundAt(S.spotP.x, S.spotP.z);
       S.mk.act.position.copy(S.spotP).setY(S.spotP.y + 0.04);
       S.pathP[S.pathP.length - 1] = S.spotP.clone();
     }
@@ -299,8 +300,10 @@ export class Stops {
     if (this.btn.dataset.k !== kind) { this.btn.dataset.k = kind; this.btn.innerHTML = `<img alt="" src="${drawIcon(kind, 96).toDataURL()}">`; }
     this.btn.classList.add('on');
   }
+  didToday(id) { return this.today[id] === DAY.day; }
+  doneToday(kind) { return this.dayDone[kind] === DAY.day; }
   unlock(S) {
-    this.done[S.id] = true;
+    this.done[S.id] = true; this.today[S.id] = DAY.day;
     const el = this.col && this.col.querySelector(`[data-k="${S.id}"]`); if (el) { el.classList.add('got', 'pop'); setTimeout(() => el.classList.remove('pop'), 900); }
     if (this.col && this.defs.every((d) => this.done[d.id])) this.col.classList.add('all');
     this.audio.chime && this.audio.chime();
@@ -428,7 +431,7 @@ export class Stops {
       }
       // the autopilot pays a visit to each stop once, as a little tour
       const S = this.offer;
-      if (S && b.auto && !this.done[S.id] && !S.visited && S.berth.s - b.s < 75 && S.berth.s - b.s > 35 && this.autoVisits !== false) { S.visited = true; this.startDock(S, true); }
+      if (S && b.auto && !this.didToday(S.id) && S.visitedDay !== DAY.day && S.berth.s - b.s < 75 && S.berth.s - b.s > 35 && this.autoVisits !== false) { S.visitedDay = DAY.day; this.startDock(S, true); }
     }
   }
   update(dt, t, camera) {
@@ -437,12 +440,12 @@ export class Stops {
     for (const D of this.defs) {
       const on = (this.offer === D && this.state === 'cruise') || (this.cur === D && this.state === 'docking');
       D.mk.water.visible = on;
-      if (D.mk.act) D.mk.act.visible = this.cur === D && ['walk', 'disembark'].includes(this.state) && !this.done[D.id];
+      if (D.mk.act) D.mk.act.visible = this.cur === D && ['walk', 'disembark'].includes(this.state) && !this.didToday(D.id);
       D.mk.ret.visible = this.cur === D && this.state === 'walk';
       const pulse = 0.5 + 0.5 * Math.sin(t * 3);
       if (D.spotMks) for (const sm of D.spotMks) {
         const sp = sm.userData.spot; let p = sp.p; if (sp.kind === 'cat') { p = this.home.catWorld(); sm.position.set(p.x, p.y + 0.03, p.z); }
-        sm.visible = this.cur === D && this.state === 'walk' && !this.visitDone[sp.kind] && Math.abs(p.y - this.pos.y) < 1.6 && (sp.kind !== 'cat' || p.distanceTo(this.pos) < 5);
+        sm.visible = this.cur === D && this.state === 'walk' && !this.doneToday(sp.kind) && Math.abs(p.y - this.pos.y) < 1.6 && (sp.kind !== 'cat' || p.distanceTo(this.pos) < 5);
         if (sm.visible) { sm.userData.mats[0].opacity = 0.45 + 0.4 * pulse; sm.children[2].position.y = 1.9 + Math.sin(t * 2) * 0.06; }
       }
       for (const m of [D.mk.water, D.mk.act, D.mk.ret]) if (m && m.visible) { m.userData.mats[0].opacity = 0.45 + 0.4 * pulse; m.children[2].position.y = (m === D.mk.water ? 2.6 : m === D.mk.act ? 2.25 : 1.9) + Math.sin(t * 2) * 0.08; }
@@ -450,6 +453,7 @@ export class Stops {
     }
     this.setBtn(this.state === 'cruise' && this.offer ? 'anchor' : this.state === 'walk' && !this.returning ? 'boat' : null);
     this.vendorUpdate(dt, t);
+    if (this.sky && this.sky.on && !(this.state === 'act' && this.actSpot && this.actSpot.kind === 'scope')) this.sky.stop();
     if (this.peopleFn) { this.dyn = this.peopleFn(); }
     this.focus = null;
     if (!S) return;
@@ -496,7 +500,7 @@ export class Stops {
         move = cf.multiplyScalar((K.up ? 1 : 0) - (K.down ? 1 : 0)).addScaledVector(cr, (K.right ? 1 : 0) - (K.left ? 1 : 0));
         if (move.lengthSq() > 0) move.normalize(); speed = jog ? 5.2 : 1.35;
       } else if (this.autoWalk) {
-        const goal = S.multi ? this.homeGoal(S) : this.returning || this.done[S.id] ? 'boat' : 'spot';
+        const goal = S.multi ? this.homeGoal(S) : this.returning || this.didToday(S.id) ? 'boat' : 'spot';
         const tgt = S.multi ? this.homeNav(S, goal) : this.nextWaypoint(S, goal);
         if (tgt) { move = tgt.clone().sub(this.pos).setY(0); const L = move.length(); if (L > 0.05) move.divideScalar(L); speed = Math.min(1.3, L * 2.2 + 0.3); }
       }
@@ -504,19 +508,19 @@ export class Stops {
       if (S.multi) {
         if (!this.done[S.id] && this.home.isInside(this.pos)) this.unlock(S);
         for (const sp of S.spots) {
-          if (this.visitDone[sp.kind]) continue;
+          if (this.doneToday(sp.kind)) continue;
           const p = sp.kind === 'cat' ? this.home.catWorld() : sp.p; const dd = Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
           const want = !this.autoWalk || this.homeGoal(S) === sp.kind;
-          if (dd < (sp.kind === 'cat' ? 0.95 : 0.5) && Math.abs(p.y - this.pos.y) < 0.7 && want && (sp.kind !== 'cat' || this.autoWalk || this.v < 0.4)) { this.state = 'act'; this.t = 0; this.actSpot = sp; this.actStart = this.pos.clone(); this.actYaw = this.yaw; return; }
+          if ((dd < (sp.kind === 'cat' ? 0.95 : 0.5) || (sp.kind === 'cat' && this.autoWalk && this.catGoal && this.catGoal.distanceTo(this.pos) < 0.2)) && Math.abs(p.y - this.pos.y) < 0.7 && want && (sp.kind !== 'cat' || this.autoWalk || this.v < 0.4)) { this.state = 'act'; this.t = 0; this.actSpot = sp; this.actStart = this.pos.clone(); this.actYaw = this.yaw; this.catStand = null; this.catCalled = 0; this.catWaitT = 0; this.gp = null; this.gpFor = null; this.catGoal = null; if (this.home) this.home.catHold = false; return; }
         }
         const toB = S.landP.clone().sub(this.pos).setY(0).length();
         if (toB < 0.6 && Math.abs(S.landP.y - this.pos.y) < 0.8 && (this.returning || (this.autoWalk && this.homeGoal(S) === 'boat') || (this.visitAny && this.t > 3))) { this.goAboard(S); return; }
       }
       const toSpot = S.spotP.clone().sub(this.pos).setY(0).length();
-      if (!S.multi && !this.done[S.id] && toSpot < 0.55) { this.state = 'act'; this.t = 0; this.actStart = this.pos.clone(); this.actYaw = this.yaw; return; }
+      if (!S.multi && !this.didToday(S.id) && toSpot < 0.55) { this.state = 'act'; this.t = 0; this.actStart = this.pos.clone(); this.actYaw = this.yaw; return; }
       const toBoat = S.landP.clone().sub(this.pos).setY(0).length();
-      if (!S.multi && toBoat < 0.6 && (this.returning || (this.done[S.id] && this.autoWalk) || (this.done[S.id] && this.t > 2 && this.leftSpot))) { this.goAboard(S); return; }
-      if (this.done[S.id] && toSpot > 2.5) this.leftSpot = true;
+      if (!S.multi && toBoat < 0.6 && (this.returning || (this.didToday(S.id) && this.autoWalk) || (this.didToday(S.id) && this.t > 2 && this.leftSpot))) { this.goAboard(S); return; }
+      if (this.didToday(S.id) && toSpot > 2.5) this.leftSpot = true;
       // integrate with walkability
       this.v = lerp(this.v, move && move.lengthSq() ? speed : 0, 1 - Math.exp(-dt * 6));
       if (move && move.lengthSq()) {
@@ -535,7 +539,9 @@ export class Stops {
       if (this.autoWalk && move && move.lengthSq()) {
         const moved = this.lastPos ? this.lastPos.distanceTo(this.pos) : 1; this.lastPos = (this.lastPos || new V3()).copy(this.pos);
         this.stuckT = moved < 0.2 * dt ? (this.stuckT || 0) + dt : 0;
-        if (this.stuckT > 2.5) { const tgt = S.multi ? this.homeNav(S, this.homeGoal(S)) : this.nextWaypoint(S, this.returning || this.done[S.id] ? 'boat' : 'spot'); if (tgt) this.pos.lerp(tgt, Math.min(1, dt * 1.5)); }
+        if (this.stuckT > 2.5 && !this.fsOn) { this.fsOn = true; (this.fsLog = this.fsLog || []).push({ id: S.id, x: +this.pos.x.toFixed(2), y: +this.pos.y.toFixed(2), z: +this.pos.z.toFixed(2), goal: S.multi ? this.homeGoal(S) : '' }); }
+        if (this.stuckT < 0.1) this.fsOn = false;
+        if (this.stuckT > 2.5) { const tgt = S.multi ? this.homeNav(S, this.homeGoal(S)) : this.nextWaypoint(S, this.returning || this.didToday(S.id) ? 'boat' : 'spot'); if (tgt) this.pos.lerp(tgt, Math.min(1, dt * 1.5)); }
       } else this.stuckT = 0;
       const gy = this.surfY(S, this.pos.x, this.pos.z); if (gy !== null) this.pos.y = lerp(this.pos.y, gy, 1 - Math.exp(-dt * 14));
       this.animLoco(dt, this.v);
@@ -548,7 +554,7 @@ export class Stops {
       if (S.multi) {
         const fin = this.homeAct(S, this.actSpot.kind, dt, t, this.t);
         this.focus = { pos: this.pos, psi: -this.yaw, dist: 4.2, h: 1.1, lead: 0.2, home: this.home.isInside(this.pos) };
-        if (fin) { this.visitDone[this.actSpot.kind] = true; this.visitAny = true; this.audio.chime && this.audio.chime(); this.state = 'walk'; this.t = 0; this.keysIdle = this.autoWalk ? 99 : 0; }
+        if (fin) { this.visitDone[this.actSpot.kind] = true; this.dayDone[this.actSpot.kind] = DAY.day; this.visitAny = true; this.audio.chime && this.audio.chime(); this.state = 'walk'; this.t = 0; this.keysIdle = this.autoWalk ? 99 : 0; }
         return;
       }
       const fin = this.interact(S, dt, t, this.t);
@@ -771,7 +777,7 @@ export class Stops {
         { kind: 'cook', p: N.stove, node: 'stove', face: dirW(0, 1) },
         { kind: 'wash', p: N.sink, node: 'sink', face: dirW(-1, 0) },
         { kind: 'sleep', p: N.bedSide, node: 'bedSide', face: dirW(-1, 0) },
-        { kind: 'scope', p: N.balcony, node: 'balcony', face: dirW(0.35, -1).normalize() },
+        { kind: 'scope', p: N.balcony, node: 'balcony', face: dirW(0, -1) },
       ],
       tour: ['fire', 'tv', 'cat'],
     };
@@ -787,11 +793,11 @@ export class Stops {
   }
   homeGoal(S) {
     if (this.returning) return 'boat';
-    for (const k of S.tour) if (!this.visitDone[k]) return k;
+    for (const k of S.tour) if (!this.visitDone[k] && !this.doneToday(k)) return k;
     return 'boat';
   }
   homeNav(S, goal) {
-    const H = this.home;
+    const H = this.home; if (goal !== 'cat') H.catHold = false;
     const route = (node) => {
       // follow a whole route through the house instead of re-deciding at every step
       if (!this.hp || this.hpGoal !== node || this.hp[this.hpI].distanceTo(this.pos) > 9) {
@@ -803,9 +809,60 @@ export class Stops {
     };
     if (goal === 'boat') return route('thead');
     const sp = S.spots.find((q) => q.kind === goal);
-    if (goal === 'cat') { const cw = H.catWorld(); if (H.isInside(this.pos) && Math.abs(cw.y - this.pos.y) < 0.8 && cw.distanceTo(this.pos) < 6) return cw; return route('living'); }
-    const tgt = sp.p; if (tgt.distanceTo(this.pos) < 0.7 && Math.abs(tgt.y - this.pos.y) < 0.5) return tgt;
+    if (goal === 'cat') {
+      const cw = H.catWorld();
+      if (H.isInside(this.pos) && Math.abs(cw.y - this.pos.y) < 0.8 && cw.distanceTo(this.pos) < 6) {
+        H.catHold = true; // the cat notices him coming and waits where it is
+        // head for a clear spot beside the cat (e.g. the gap in front of the sofa), not into the cat itself
+        if (!this.catGoal || !this.catGoalAt || this.catGoalAt.distanceTo(cw) > 0.3) {
+          let best = null, bd = 1e9; const cands = [];
+          for (const rad of [0.6, 0.72, 0.82]) for (let i = 0; i < 12; i++) { const an = i / 12 * Math.PI * 2; const p = cw.clone().add(new V3(Math.cos(an) * rad, 0, Math.sin(an) * rad)); p.y = this.pos.y;
+            if (!H.blocked(p.x, p.z, p.y, 0.27)) cands.push(p); }
+          cands.sort((u, v) => u.distanceTo(this.pos) - v.distanceTo(this.pos));
+          // a cat up on the sofa is petted from the seat side (from behind, the backrest is in the way)
+          const onSofa = H.catOnSofa(); const front = (p) => H.toLocal(p.x, p.y, p.z).x > 3.1;
+          if (onSofa) cands.sort((u, v) => (front(v) - front(u)) || (u.distanceTo(this.pos) - v.distanceTo(this.pos)));
+          for (const p of cands.slice(0, 4)) { const path = H.gridPath(this.pos, p); if (!path) continue; let L = 0; for (let q = 1; q < path.length; q++) L += path[q].distanceTo(path[q - 1]); if (onSofa && !front(p)) L += 6; if (L < bd) { bd = L; best = { p, path }; } }
+          this.catGoal = best ? best.p : null; this.catGoalAt = cw.clone(); this.gp = best ? best.path : null; this.gpI = 0;
+        }
+        return this.followGrid() || this.catGoal || cw;
+      }
+      this.catGoal = null; return route('living');
+    }
+    const tgt = sp.p;
+    if (Math.abs(tgt.y - this.pos.y) < 0.5 && tgt.distanceTo(this.pos) < 4.5) {
+      if (!this.gp || this.gpFor !== sp.kind) { this.gp = H.gridPath(this.pos, tgt); this.gpI = 0; this.gpFor = sp.kind; }
+      const g = this.followGrid(); if (g) return g;
+      if (tgt.distanceTo(this.pos) < 0.7) return tgt;
+    } else if (this.gpFor === sp.kind) { this.gp = null; this.gpFor = null; }
     return route(sp.node);
+  }
+  // which way (+1/-1) a positive rotation about the character's X axis tips the upper body forward
+  leanSign() {
+    if (this._ls) return this._ls;
+    const rig = this.rig, g = this.char.root; g.updateMatrixWorld(true);
+    const fwd = new V3(0, 0, -1).applyQuaternion(g.getWorldQuaternion(new Q()));
+    const h0 = rig.worldPos('Head'); rig.rotG('spine_01', X, 0.2); const h1 = rig.worldPos('Head'); rig.rotG('spine_01', X, -0.2);
+    this._ls = h1.sub(h0).dot(fwd) > 0 ? 1 : -1; return this._ls;
+  }
+  // bend at the hips (and a little at the knees) so the eyes end up at a point in front of him
+  leanEyeTo(target, k) {
+    const rig = this.rig, g = this.char.root, s = this.leanSign();
+    const fwd = new V3(0, 0, -1).applyQuaternion(g.getWorldQuaternion(new Q()));
+    const eyeOf = () => rig.worldPos('Head').addScaledVector(fwd, 0.09).addScaledVector(Y, 0.07);
+    const e0 = eyeOf(), hip = rig.worldPos('spine_01'); const L = Math.max(0.3, Math.hypot(e0.y - hip.y, e0.clone().sub(hip).dot(fwd)));
+    const f = target.clone().sub(hip).dot(fwd), up = target.y - hip.y;
+    const a = clamp(Math.atan2(f, Math.max(0.2, up)) - Math.atan2(e0.clone().sub(hip).dot(fwd), e0.y - hip.y), -0.25, 0.9) * k;
+    rig.rotG('spine_01', X, s * a); g.updateMatrixWorld(true);
+    const e1 = eyeOf(); const dy = clamp(target.y - e1.y, -0.35, 0.06) * k, df = clamp(target.clone().sub(e1).dot(fwd), -0.12, 0.12) * k;
+    rig.moveG('pelvis', new V3(0, dy, -df)); g.updateMatrixWorld(true);
+    return { a, s, L };
+  }
+  followGrid() {
+    if (!this.gp) return null;
+    // move on to the next corner only once it can be walked to in a straight line (never cut a corner into furniture)
+    while (this.gpI < this.gp.length - 1) { const d = Math.hypot(this.gp[this.gpI].x - this.pos.x, this.gp[this.gpI].z - this.pos.z); if (d < 0.06 || (d < 0.5 && this.home.segClear(this.pos, this.gp[this.gpI + 1]))) this.gpI++; else break; }
+    return this.gp[this.gpI];
   }
   homeAct(S, kind, dt, t, tt) {
     const H = this.home, rig = this.rig, g = this.char.root, a = this.act, sp = this.actSpot;
@@ -822,81 +879,127 @@ export class Stops {
       g.updateMatrixWorld(true); rig.rotG('Head', X, -0.05);
       return tt > T;
     }
-    // everything else happens standing: face the thing, keep the feet planted
-    this.animLoco(dt, 0);
-    if (sp.face) this.yaw = lerpAng(this.yaw, faceYaw(sp.face), 1 - Math.exp(-dt * 4));
-    if (kind === 'cat') { const cw = H.catWorld(); const d = cw.clone().sub(this.pos); this.yaw = lerpAng(this.yaw, faceYaw(d), 1 - Math.exp(-dt * 4)); }
-    this.place(); g.updateMatrixWorld(true);
-    const gq = g.getWorldQuaternion(new Q());
-    const right = X.clone().applyQuaternion(gq), fwd = new V3(0, 0, -1).applyQuaternion(gq);
-    const chest = rig.worldPos('spine_03');
-    const arm = (side, target, fdir, palm, curl = 0.35) => { const sg = side === 'r' ? 1 : -1; rig.twoBone('upperarm_' + side, 'lowerarm_' + side, target, rig.worldPos('upperarm_' + side).addScaledVector(right, 0.5 * sg).addScaledVector(Y, -0.6).addScaledVector(fwd, -0.1), new V3(0, -0.4, 1)); rig.hand(side, fdir.normalize(), palm.normalize()); rig.curl(side, curl, 0.3); };
-    if (kind === 'fire') {
-      // warm the hands: palms to the fire, a slow rub now and then
-      const k = smooth(0.5, 1.5, tt) * (1 - smooth(8.6, 9.6, tt)); const rub = Math.sin(tt * 5) * 0.03 * smooth(4, 5, tt) * (1 - smooth(6, 7, tt));
-      rig.moveG('pelvis', new V3(0, -0.06 * k, 0.03 * k)); rig.rotG('spine_01', X, -0.18 * k);
-      g.updateMatrixWorld(true);
-      for (const [side, sg] of [['l', -1], ['r', 1]]) {
-        const rest = rig.worldPos('upperarm_' + side).addScaledVector(Y, -0.55).addScaledVector(right, sg * 0.1);
-        const tgt = rig.worldPos('spine_03').addScaledVector(fwd, 0.42).addScaledVector(right, sg * (0.16 + rub)).addScaledVector(Y, -0.12);
-        arm(side, rest.lerp(tgt, k), Y.clone().addScaledVector(fwd, 0.3), fwd.clone().addScaledVector(right, -sg * 0.2), 0.15);
-      }
-      this.legsPlanted(); return tt > 10;
-    }
-    if (kind === 'cook') {
-      // stir the pot on the stove
-      const pot = H.toWorld(H.potPos.x, H.potPos.y, H.potPos.z); const k = smooth(0.4, 1.2, tt) * (1 - smooth(10, 11, tt));
-      const c = pot.clone().addScaledVector(Y, 0.16).add(new V3(Math.cos(tt * 3.2) * 0.06, 0, Math.sin(tt * 3.2) * 0.06));
-      const rest = rig.worldPos('upperarm_r').addScaledVector(Y, -0.55).addScaledVector(right, 0.1);
-      arm('r', rest.lerp(c, k), Y.clone().negate().addScaledVector(fwd, 0.4), right.clone().negate(), 0.9);
-      if (!this.spoon) { this.spoon = new THREE.Mesh(cyl(0.012, 0.018, 0.34, 6), std({ color: 0xc89a60, roughness: 0.6 })); this.scene.add(this.spoon); }
-      this.spoon.visible = k > 0.3; this.spoon.position.copy(c).addScaledVector(Y, -0.08); this.spoon.rotation.set(0.25, 0, 0.2);
-      if (k > 0.5 && Math.random() < dt * 8 && this.audio.amb) { const { node } = this.audio.amb.place(pot.x, pot.z, 4); this.audio.amb.burst(node, this.audio.ctx.currentTime, 0.05, 5000, 0.8, 0.05, 'highpass'); }
-      rig.rotG('neck_01', X, 0.25 * k); this.legsPlanted();
-      if (tt > 11) { this.spoon.visible = false; return true; } return false;
-    }
-    if (kind === 'wash') {
-      const sink = H.toWorld(H.sinkPos.x, H.sinkPos.y, H.sinkPos.z); const k = smooth(0.3, 1.0, tt) * (1 - smooth(6, 6.8, tt));
-      rig.rotG('spine_01', X, -0.2 * k); g.updateMatrixWorld(true);
-      for (const [side, sg] of [['l', -1], ['r', 1]]) {
-        const rest = rig.worldPos('upperarm_' + side).addScaledVector(Y, -0.55).addScaledVector(right, sg * 0.1);
-        const tgt = sink.clone().addScaledVector(right, sg * (0.05 + Math.sin(tt * 9 + sg) * 0.025)).addScaledVector(Y, -0.02);
-        arm(side, rest.lerp(tgt, k), fwd.clone().addScaledVector(Y, -0.3), right.clone().multiplyScalar(-sg), 0.3);
-      }
-      if (k > 0.4 && Math.random() < dt * 14 && this.audio.amb) { const { node } = this.audio.amb.place(sink.x, sink.z, 4); this.audio.amb.burst(node, this.audio.ctx.currentTime, 0.08, 3500, 0.7, 0.06, 'highpass'); }
-      this.legsPlanted(); return tt > 7;
-    }
-    if (kind === 'scope') {
-      const k = smooth(0.4, 1.4, tt) * (1 - smooth(7.4, 8.4, tt));
-      rig.rotG('spine_01', X, -0.25 * k); rig.rotG('neck_01', X, 0.15 * k); g.updateMatrixWorld(true);
-      const eye = H.toWorld(H.scopePos.x, H.scopePos.y + 1.45, H.scopePos.z + 0.28);
-      for (const [side, sg] of [['l', -1], ['r', 1]]) {
-        const rest = rig.worldPos('upperarm_' + side).addScaledVector(Y, -0.55).addScaledVector(right, sg * 0.1);
-        arm(side, rest.lerp(eye.clone().addScaledVector(right, sg * 0.1).addScaledVector(fwd, 0.12 + (sg > 0 ? 0.15 : 0)).addScaledVector(Y, -0.08), k), fwd.clone(), right.clone().multiplyScalar(-sg), 0.7);
-      }
-      this.legsPlanted(); return tt > 8.5;
-    }
-    if (kind === 'cat') {
-      // crouch down and stroke the cat along its back
-      const k = smooth(0.2, 1.0, tt) * (1 - smooth(7.2, 8.0, tt)); H.petting = k > 0.3;
-      rig.moveG('pelvis', new V3(0, -0.42 * k, 0.12 * k)); rig.rotG('spine_01', X, -0.35 * k); rig.rotG('neck_01', X, 0.3 * k); g.updateMatrixWorld(true);
-      const cw = H.catWorld(); const back = cw.clone().addScaledVector(Y, 0.3).addScaledVector(fwd, Math.sin(tt * 1.6) * 0.1);
-      const rest = rig.worldPos('upperarm_r').addScaledVector(Y, -0.55).addScaledVector(right, 0.1);
-      arm('r', rest.lerp(back, k), fwd.clone().addScaledVector(Y, -0.4), Y.clone().negate(), 0.2);
-      this.legsPlanted(); if (tt > 8) { H.petting = false; return true; } return false;
-    }
     if (kind === 'sleep') {
-      // lie down on the bed, the night passes, get up in the morning
-      const T = 11; const bedC = H.toWorld(3.3, 3.1 + 0.62, 0.1); const hq = H.g.quaternion;
+      // lie on his back on top of the duvet, head on the pillows; the night passes; up again in the morning
+      const T = 11; const hq = H.g.quaternion;
+      const bedC = H.toWorld(3.3, 3.1 + 0.63 + 0.15, 0.02);
       const lie = new Q().setFromAxisAngle(X, Math.PI / 2).premultiply(hq);
       const stand = new Q().setFromEuler(new THREE.Euler(0, this.yaw, 0));
       const k = smooth(0.4, 1.8, tt) * (1 - smooth(T - 2, T - 0.6, tt));
-      this.pos.copy(this.actStart).lerp(bedC, k);
-      g.position.copy(this.pos); g.quaternion.copy(stand).slerp(lie, k); g.updateMatrixWorld(true);
+      a.idle.setEffectiveWeight(1); a.walk.setEffectiveWeight(0); a.jog.setEffectiveWeight(0); a.run.setEffectiveWeight(0); a.sit.setEffectiveWeight(0);
+      // rise onto the bed first, then tip back, so the body never passes through the mattress
+      const up = this.actStart.clone().lerp(bedC, smooth(0, 0.5, k)); up.y = lerp(this.actStart.y, bedC.y + 0.25 * (1 - smooth(0.5, 1, k)), smooth(0, 0.5, k));
+      this.pos.copy(up);
+      g.position.copy(this.pos); g.quaternion.copy(stand).slerp(lie, smooth(0.35, 1, k)); g.updateMatrixWorld(true);
+      if (k > 0.5) { const s = this.leanSign(); rig.rotG('Head', X, -s * 0.12 * k); }
       if (this.fadeFn) this.fadeFn(smooth(2.2, 3.4, tt) * (1 - smooth(5.2, 6.6, tt)));
       if (tt > 4.2 && !this.slept) { this.slept = true; this.onSleep && this.onSleep(); }
       if (tt > T) { this.slept = false; this.fadeFn && this.fadeFn(0); this.pos.copy(this.actStart); this.place(); return true; }
       return false;
+    }
+    // everything else happens standing: face the thing, keep the feet planted
+    this.animLoco(dt, 0);
+    if (kind === 'cat') {
+      // step to a free spot beside the cat (not into a stool or the island), face it
+      H.petting = true; const cw = H.catWorld(); const C = H.catState;
+      // a clear spot within reach of the cat (it may be up on the sofa, or tucked by furniture)
+      const findStand = () => {
+        let best = null, bd = 1e9;
+        for (const rad of [0.6, 0.72, 0.82]) for (let i = 0; i < 16; i++) { const an = i / 16 * Math.PI * 2; const p = cw.clone().add(new V3(Math.cos(an) * rad, 0, Math.sin(an) * rad)); p.y = this.pos.y;
+          if (H.blocked(p.x, p.z, p.y, 0.25) || walkBlocked(p.x, p.z, 0.25, [])) continue;
+          // only spots he can step to in a straight line (never slide through furniture to get there)
+          let clear = true; const n = Math.ceil(p.distanceTo(this.pos) / 0.1); for (let j = 1; j < n && clear; j++) { const q = this.pos.clone().lerp(p, j / n); if (H.blocked(q.x, q.z, q.y, 0.2)) clear = false; }
+          if (!clear) continue; const d = p.distanceTo(this.pos) + (H.catOnSofa() && H.toLocal(p.x, p.y, p.z).x <= 3.1 ? 3 : 0); if (d < bd) { bd = d; best = p; } }
+        return best;
+      };
+      // if he has called the cat over, wait (a few seconds at most) until it has arrived and sat down
+      if (this.catCalled > 0 && C.mode === 'walk' && (this.catWaitT = (this.catWaitT || 0) + dt) < 6) { this.t = 0; this.catStand = null; this.place(); return false; }
+      if (!this.catStand) {
+        this.catStand = findStand();
+        // nowhere to crouch within reach: call the cat over to sit in front of him
+        if (!this.catStand && !this.catCalled) { this.catCalled = H.callCat(this.pos, new V3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))) ? 1 : -1; if (this.catCalled > 0) { this.t = 0; this.place(); return false; } }
+        if (!this.catStand) { const s2 = findStand(); if (!s2) { H.petting = false; this.catCalled = 0; this.catWaitT = 0; return true; } this.catStand = s2; }
+      }
+      this.pos.lerp(this.catStand, 1 - Math.exp(-dt * 5));
+      const d = cw.clone().sub(this.pos); this.yaw = lerpAng(this.yaw, faceYaw(d), 1 - Math.exp(-dt * 5));
+    } else if (sp.face) this.yaw = lerpAng(this.yaw, faceYaw(sp.face), 1 - Math.exp(-dt * 4));
+    if (sp.p && kind !== 'cat') this.pos.lerp(new V3(sp.p.x, this.pos.y, sp.p.z), 1 - Math.exp(-dt * 4));
+    this.place(); g.updateMatrixWorld(true);
+    const gq = g.getWorldQuaternion(new Q());
+    const right = X.clone().applyQuaternion(gq), fwd = new V3(0, 0, -1).applyQuaternion(gq);
+    const ls = this.leanSign();
+    const arm = (side, target, fdir, palm, curl = 0.35) => { const sg = side === 'r' ? 1 : -1; rig.twoBone('upperarm_' + side, 'lowerarm_' + side, target, rig.worldPos('upperarm_' + side).addScaledVector(right, 0.5 * sg).addScaledVector(Y, -0.6).addScaledVector(fwd, -0.1), new V3(0, -0.4, 1)); rig.hand(side, fdir.normalize(), palm.normalize()); rig.curl(side, curl, 0.3); };
+    const restOf = (side, sg) => rig.worldPos('upperarm_' + side).addScaledVector(Y, -0.55).addScaledVector(right, sg * 0.1);
+    if (kind === 'fire') {
+      // warm the hands: palms to the fire, a slow rub now and then
+      const k = smooth(0.5, 1.5, tt) * (1 - smooth(8.6, 9.6, tt)); const rub = Math.sin(tt * 5) * 0.03 * smooth(4, 5, tt) * (1 - smooth(6, 7, tt));
+      rig.moveG('pelvis', new V3(0, -0.2 * k, 0.06 * k)); rig.rotG('spine_01', X, ls * 0.28 * k);
+      g.updateMatrixWorld(true);
+      const fireW = H.toWorld(H.firePos.x, H.firePos.y, H.firePos.z);
+      for (const [side, sg] of [['l', -1], ['r', 1]]) {
+        const tgt = rig.worldPos('spine_03').addScaledVector(fwd, 0.4).addScaledVector(right, sg * (0.13 + rub)); tgt.y = Math.max(fireW.y + 0.55, tgt.y - 0.35);
+        arm(side, restOf(side, sg).lerp(tgt, k), Y.clone().addScaledVector(fwd, 0.3), fwd.clone().addScaledVector(right, -sg * 0.2), 0.15);
+      }
+      this.legsPlanted(); return tt > 10;
+    }
+    if (kind === 'cook') {
+      // stir the pot on the stove, looking down into it
+      const pot = H.toWorld(H.potPos.x, H.potPos.y, H.potPos.z); const k = smooth(0.4, 1.2, tt) * (1 - smooth(10, 11, tt));
+      rig.rotG('spine_01', X, ls * 0.12 * k); g.updateMatrixWorld(true);
+      const c = pot.clone().addScaledVector(Y, 0.16).add(new V3(Math.cos(tt * 3.2) * 0.05, 0, Math.sin(tt * 3.2) * 0.05));
+      arm('r', restOf('r', 1).lerp(c, k), Y.clone().negate().addScaledVector(fwd, 0.4), right.clone().negate(), 0.9);
+      if (!this.spoon) { this.spoon = new THREE.Mesh(cyl(0.012, 0.018, 0.34, 6), std({ color: 0xc89a60, roughness: 0.6 })); this.scene.add(this.spoon); }
+      // the spoon sits in the fist and dips into the pot
+      const fist = rig.worldPos('hand_r'); this.spoon.visible = k > 0.3; this.spoon.position.copy(fist).lerp(pot, 0.45); this.spoon.lookAt(pot); this.spoon.rotateX(Math.PI / 2);
+      if (k > 0.5 && Math.random() < dt * 8 && this.audio.amb) { const { node } = this.audio.amb.place(pot.x, pot.z, 4); this.audio.amb.burst(node, this.audio.ctx.currentTime, 0.05, 5000, 0.8, 0.05, 'highpass'); }
+      rig.rotG('neck_01', X, ls * 0.35 * k); this.legsPlanted();
+      if (tt > 11) { this.spoon.visible = false; return true; } return false;
+    }
+    if (kind === 'wash') {
+      // lean over the basin, hands under the running tap, rubbing
+      const sink = H.toWorld(H.sinkPos.x, H.sinkPos.y, H.sinkPos.z), tap = H.toWorld(H.tapPos.x, H.tapPos.y, H.tapPos.z);
+      const k = smooth(0.3, 1.0, tt) * (1 - smooth(6, 6.8, tt));
+      rig.rotG('spine_01', X, ls * 0.42 * k); rig.moveG('pelvis', new V3(0, -0.05 * k, 0.04 * k)); g.updateMatrixWorld(true);
+      const under = sink.clone().lerp(tap, 0.35); under.y = sink.y + 0.08;
+      for (const [side, sg] of [['l', -1], ['r', 1]]) {
+        const rub = Math.sin(tt * 9 + sg * 1.5) * 0.03 * smooth(1.2, 1.6, tt);
+        const wrist = under.clone().addScaledVector(right, sg * 0.05).addScaledVector(fwd, -0.09 + rub).addScaledVector(Y, 0.05);
+        arm(side, restOf(side, sg).lerp(wrist, k), fwd.clone().addScaledVector(Y, -0.6).addScaledVector(right, -sg * 0.25), right.clone().multiplyScalar(-sg).addScaledVector(Y, 0.2), 0.25);
+      }
+      if (!this.stream) { this.stream = new THREE.Mesh(cyl(0.012, 0.016, 1, 8), std({ color: 0xcfe6ff, roughness: 0.05, transparent: true, opacity: 0.55 }, { wet: 0 })); this.scene.add(this.stream); }
+      const on = k > 0.25; this.stream.visible = on;
+      if (on) { const top = tap.clone().addScaledVector(Y, -0.02), bot = sink.clone().addScaledVector(Y, -0.04); this.stream.position.copy(top).lerp(bot, 0.5); this.stream.scale.set(1 + Math.sin(tt * 30) * 0.08, top.distanceTo(bot), 1); this.stream.quaternion.setFromUnitVectors(Y, top.clone().sub(bot).normalize()); }
+      if (k > 0.4 && Math.random() < dt * 14 && this.audio.amb) { const { node } = this.audio.amb.place(sink.x, sink.z, 4); this.audio.amb.burst(node, this.audio.ctx.currentTime, 0.08, 3500, 0.7, 0.06, 'highpass'); }
+      rig.rotG('neck_01', X, ls * 0.25 * k);
+      this.legsPlanted(); if (tt > 7) { this.stream.visible = false; return true; } return false;
+    }
+    if (kind === 'scope') {
+      // bend to the eyepiece, right hand on the focuser end, left hand cradling the tube; then the view
+      const T = 17; const k = smooth(0.4, 1.6, tt) * (1 - smooth(T - 1.8, T - 0.5, tt));
+      const ax = H.scopeAxis.clone().applyQuaternion(H.g.quaternion);
+      const eyeW = H.toWorld(H.eyepiece.x, H.eyepiece.y, H.eyepiece.z).addScaledVector(ax, -0.06);
+      const L = this.leanEyeTo(eyeW, k);
+      // look along the tube: undo the lean at the neck and tip the head up to the tube's elevation
+      rig.rotG('neck_01', X, -L.s * (L.a + 0.3 * k) * 0.8); g.updateMatrixWorld(true);
+      const gr = H.scopeGrip; const gR = H.toWorld(gr.r.x, gr.r.y, gr.r.z), gL = H.toWorld(gr.l.x, gr.l.y, gr.l.z);
+      grip(rig, 'r', restOf('r', 1).lerp(gR, k), Y.clone().addScaledVector(right, -0.2), right.clone().negate().addScaledVector(Y, -0.2), 0.9, 0.8, 0.078, 0.04, rig.worldPos('upperarm_r').addScaledVector(right, 0.5).addScaledVector(Y, -0.6));
+      grip(rig, 'l', restOf('l', -1).lerp(gL, k), right.clone().addScaledVector(Y, 0.3), Y.clone().addScaledVector(right, 0.2), 0.8, 0.8, 0.078, 0.04, rig.worldPos('upperarm_l').addScaledVector(right, -0.5).addScaledVector(Y, -0.6));
+      this.legsPlanted();
+      // the night sky through the eyepiece
+      if (this.sky) {
+        const v = smooth(2.2, 3.2, tt) * (1 - smooth(T - 3.2, T - 2.2, tt));
+        if (v > 0 && !this.sky.on) this.sky.start();
+        if (this.sky.on) { this.sky.update(dt, v); if (v <= 0 && tt > 4) this.sky.stop(); }
+      }
+      if (tt > T) { if (this.sky) this.sky.stop(); return true; } return false;
+    }
+    if (kind === 'cat') {
+      // crouch down and stroke the cat along its back
+      const k = smooth(0.4, 1.2, tt) * (1 - smooth(7.2, 8.0, tt)); H.petting = tt < 7.6;
+      const low = H.catOnSofa() ? 0.22 : 0.42; rig.moveG('pelvis', new V3(0, -low * k, 0.12 * k)); rig.rotG('spine_01', X, ls * 0.35 * k); rig.rotG('neck_01', X, ls * 0.3 * k); g.updateMatrixWorld(true);
+      const cw = H.catWorld(); const back = cw.clone().addScaledVector(Y, 0.3).addScaledVector(fwd, Math.sin(tt * 1.6) * 0.1);
+      arm('r', restOf('r', 1).lerp(back, k), fwd.clone().addScaledVector(Y, -0.4), Y.clone().negate(), 0.2);
+      this.legsPlanted(); if (tt > 8) { H.petting = false; this.catStand = null; this.catCalled = 0; this.catWaitT = 0; return true; } return false;
     }
     return true;
   }

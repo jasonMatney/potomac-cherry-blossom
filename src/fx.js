@@ -385,6 +385,8 @@ export class FX {
     this.scene.add(this.spray); this.spAcc = 0; this.spI = 0;
   }
   updateSpray(dt, t, hero, tide) {
+    // the bow and prop wash are carried by the water simulation now; the old white spray dots are off
+    this.spray.visible = false; return;
     if (!hero) return;
     const [fx, fz] = hero.fwd(); const rx = -fz, rz = fx;
     const spd = Math.max(0, hero.u);

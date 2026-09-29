@@ -10,6 +10,7 @@ import { Pipeline, LAYER } from './post.js';
 import { bakeMaps, buildWater, stepSim, W, SIM, simProbe, updatePatchFrame } from './water.js';
 import { buildMaterials, M, NIGHT_EMISSIVE } from './mats.js';
 import { buildLandmarks } from './landmarks.js';
+import { SkyView } from './skyview.js';
 import { buildVegetation, ROCKS, cullVeg, cullVegDyn, reflCull, VEG } from './veg.js';
 import { LIGHTS, inSolid, addLight, walkBlocked } from './registry.js';
 import { buildBoatModel, Boat, buildLane, laneAt } from './boat.js';
@@ -88,7 +89,7 @@ window.addEventListener('resize', () => { gov.resize = true; });
 const env = { pmrem: new THREE.PMREMGenerator(renderer), scene: new THREE.Scene(), rt: null, timer: 0 };
 let sky;
 const APP = { scene, camera, renderer, pipeline, sun, hemi, time: 0, fade: 0, loopState: 0 };
-window.APP = APP; APP.THREE = THREE;
+window.APP = APP; APP.THREE = THREE; APP.walkBlocked = walkBlocked;
 const audio = new Soundscape();
 
 // ------------------------------------------------------------------ input
@@ -165,6 +166,7 @@ async function init() {
   APP.stops = new Stops({ scene, boat, skipper: APP.skipper, audio, camera, home: APP.home });
   { const fade = document.getElementById('fade'); APP.stops.fadeFn = (k) => { if (fade) fade.style.opacity = String(k); }; }
   APP.stops.onSleep = () => setHour(6.9);
+  APP.stops.sky = new SkyView();
   APP.wild = new Wildlife(scene);
   APP.rowing = new Rowing(scene);
   APP.joggers = new Joggers(scene, 4);

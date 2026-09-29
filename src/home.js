@@ -54,6 +54,7 @@ class Builder {
     if (far) for (const [mat, list] of farMats) { const mesh = new THREE.Mesh(merge(list), mat); mesh.castShadow = true; mesh.receiveShadow = true; far.add(mesh); }
   }
 }
+const Y3 = new THREE.Vector3(0, 1, 0);
 const B3 = (x0, x1, y0, y1, z0, z1) => box(x1 - x0, y1 - y0, z1 - z0, { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (z0 + z1) / 2 });
 
 // a wall slab along x or z with rectangular openings [(u0, u1, v0, v1)] in wall coordinates
@@ -212,7 +213,16 @@ export class Home {
       for (const x of [1.5, 5.9]) b.add('out', m.trim, B3(x - 0.06, x + 0.06, -4.0, 0.0, -6.55, -6.43));
       const railLine = (a, bb, part = 'out') => { const n = Math.max(2, Math.ceil(a.distanceTo(bb) / 0.14)); for (let i = 0; i <= n; i++) { const p = a.clone().lerp(bb, i / n); b.add(part, m.rail, B3(p.x - 0.02, p.x + 0.02, p.y, p.y + 0.95, p.z - 0.02, p.z + 0.02)); } b.add(part, m.rail, tfLine(a.clone().setY(a.y + 0.95), bb.clone().setY(bb.y + 0.95), 0.05)); };
       this.railLine = railLine;
-      railLine(new V3(1.45, 0, -4.55), new V3(1.45, 0, -6.55)); railLine(new V3(1.45, 0, -6.55), new V3(4.9, 0, -6.55)); railLine(new V3(5.95, 0, -4.55), new V3(5.95, 0, -6.1));
+      railLine(new V3(1.45, 0, -4.55), new V3(1.45, 0, -6.55)); railLine(new V3(1.45, 0, -6.55), new V3(4.9, 0, -6.55)); railLine(new V3(5.95, 0, -4.55), new V3(5.95, 0, -6.6));
+      // stair head: the porch steps out over the slope at its south-east corner; that corner is cut square to
+      // the dock stairs, which start flush along the cut
+      const A0 = new V3(6.45, 0, -7.45), dirA = new V3(12.6 - 6.45, 0, -10.75 + 7.45).normalize();
+      const SHd = this.stairHead = { a: A0, dir: dirA, poly: [[4.9, -6.6], [6.8, -6.6], [6.8, -6.8], [6.155, -8.0], [4.9, -8.0]] };
+      { const sh = new THREE.Shape(); SHd.poly.forEach(([x, z], i) => (i ? sh.lineTo(x, -z) : sh.moveTo(x, -z)));
+        const dg = new THREE.ExtrudeGeometry(sh, { depth: 0.12, bevelEnabled: false }); dg.rotateX(-Math.PI / 2); dg.translate(0, -0.12, 0); ensureColor(dg); boxUV(dg, 0.5); b.add('out', m.deckwood, dg, true); }
+      for (const [x, z] of [[4.96, -7.94], [6.16, -7.94], [6.74, -6.84], [6.74, -6.66]]) b.add('out', m.trim, B3(x - 0.06, x + 0.06, -4.2, -0.12, z - 0.06, z + 0.06));
+      railLine(new V3(4.93, 0, -6.6), new V3(4.93, 0, -7.97)); railLine(new V3(4.93, 0, -7.97), new V3(6.14, 0, -7.97));
+      railLine(new V3(6.0, 0, -6.57), new V3(6.77, 0, -6.57)); railLine(new V3(6.77, 0, -6.57), new V3(6.77, 0, -6.78));
     }
     { // sunroom: white frame, glass walls and a sloped glass roof leaning on the house
       const x0 = -5.6, x1 = 0.4, z0 = -8.0, z1 = -HZ, h0 = 2.5, h1 = 3.0;
@@ -289,14 +299,14 @@ export class Home {
     for (const z of [-0.55, 0.55]) add(f0, m.sofa, rbox(0.8, 0.14, 1.0, 0.05, { x: 2.7, y: y + 0.52, z }));
     for (const z of [-0.8, 0.8]) add(f0, m.cushion, rbox(0.14, 0.4, 0.4, 0.06, { x: 2.45, y: y + 0.78, z, rz: -0.2 }));
     blk(0, 2.1, 3.05, -1.25, 1.25);
-    add(f0, m.darkwood, B3(3.35, 4.0, y + 0.36, y + 0.42, -0.45, 0.45)); for (const [sx, sz] of [[3.4, -0.4], [3.95, -0.4], [3.4, 0.4], [3.95, 0.4]]) add(f0, m.darkwood, B3(sx - 0.03, sx + 0.03, y, y + 0.36, sz - 0.03, sz + 0.03));
-    blk(0, 3.35, 4.0, -0.45, 0.45);
-    add(f0, m.darkwood, B3(1.6, 1.9, y, y + 0.55, 1.5, 1.8)); b.add(f0, m.lampShade, cyl(0.16, 0.22, 0.28, 14, { x: 1.75, y: y + 1.2 })); b.add(f0, m.steel, cyl(0.012, 0.012, 0.6, 5, { x: 1.75, y: y + 0.85 }));
+    add(f0, m.darkwood, B3(3.75, 4.2, y + 0.36, y + 0.42, -0.45, 0.45)); for (const [sx, sz] of [[3.8, -0.4], [4.15, -0.4], [3.8, 0.4], [4.15, 0.4]]) add(f0, m.darkwood, B3(sx - 0.03, sx + 0.03, y, y + 0.36, sz - 0.03, sz + 0.03));
+    blk(0, 3.75, 4.2, -0.45, 0.45);
+    add(f0, m.darkwood, B3(1.6, 1.9, y, y + 0.55, 1.5, 1.8)); b.add(f0, m.lampShade, cyl(0.16, 0.22, 0.28, 14, { x: 1.75, y: y + 1.2, z: 1.65 })); b.add(f0, m.steel, cyl(0.012, 0.012, 0.6, 5, { x: 1.75, y: y + 0.85, z: 1.65 })); blk(0, 1.55, 1.95, 1.45, 1.85);
     // armchair by the front window
     add(f0, m.cushion, B3(4.2, 5.0, y + 0.1, y + 0.45, -3.7, -2.9)); add(f0, m.cushion, B3(4.2, 5.0, y + 0.1, y + 0.95, -3.95, -3.7));
     blk(0, 4.2, 5.0, -3.95, -2.9);
     // plant
-    this.plant(f0, new V3(1.2, y, -3.9), 1.0);
+    this.plant(f0, new V3(1.2, y, -3.9), 1.0); blk(0, 0.95, 1.45, -4.15, -3.65);
     // dining table with four chairs in the front-left, opening to the sunroom
     add(f0, m.lightwood, B3(-3.9, -2.1, y + 0.72, y + 0.77, -2.45, -1.55));
     for (const [sx, sz] of [[-3.85, -2.4], [-2.15, -2.4], [-3.85, -1.6], [-2.15, -1.6]]) add(f0, m.lightwood, B3(sx - 0.03, sx + 0.03, y, y + 0.72, sz - 0.03, sz + 0.03));
@@ -316,7 +326,7 @@ export class Home {
     add(f0, m.steel, B3(-1.5, -0.72, y, y + 1.95, 3.75, 4.4)); add(f0, m.black, B3(-1.45, -1.43, y + 0.9, y + 1.6, 3.73, 3.75));
     blk(0, -1.52, -0.7, 3.7, 4.45);
     add(f0, m.cabinet, B3(-3.6, -2.0, y, y + 0.9, 1.65, 2.45)); add(f0, m.counter, B3(-3.65, -1.95, y + 0.9, y + 0.94, 1.6, 2.5));
-    blk(0, -3.65, -1.95, 1.6, 2.5);
+    blk(0, -3.65, -1.95, 1.6, 2.5); blk(0, -3.42, -2.18, 1.05, 1.45); // island and its stools
     for (const x of [-3.2, -2.4]) { b.add(f0, m.darkwood, cyl(0.17, 0.17, 0.05, 12, { x, y: y + 0.66, z: 1.25 })); b.add(f0, m.steel, cyl(0.02, 0.02, 0.64, 5, { x, y: y + 0.32, z: 1.25 })); }
     for (const x of [-3.2, -2.4]) { b.add(f0, m.lampShade, cyl(0.1, 0.16, 0.18, 12, { x, y: y + 2.2, z: 2.05 })); b.add(f0, m.black, cyl(0.006, 0.006, 0.7, 4, { x, y: y + 2.62, z: 2.05 })); }
     // fruit bowl on the island
@@ -369,8 +379,8 @@ export class Home {
     b.add(f1, m.porcelain, cyl(0.19, 0.16, 0.42, 14, { x: -3.4, y: y1 + 0.21, z: 4.05 })); add(f1, m.porcelain, B3(-3.62, -3.18, y1 + 0.4, y1 + 0.78, 4.28, 4.42)); blk(1, -3.65, -3.15, 3.8, 4.45);
     add(f1, m.lightwood, B3(-5.9, -5.4, y1, y1 + 0.82, 1.0, 2.0)); add(f1, m.counter, B3(-5.92, -5.35, y1 + 0.82, y1 + 0.86, 0.98, 2.02));
     b.add(f1, m.porcelain, cyl(0.17, 0.12, 0.08, 16, { x: -5.62, y: y1 + 0.89, z: 1.5 })); b.add(f1, m.steel, tube([new V3(-5.88, y1 + 0.9, 1.5), new V3(-5.88, y1 + 1.12, 1.5), new V3(-5.72, y1 + 1.14, 1.5)], [0.012, 0.012, 0.012], 6));
-    add('w1left', m.mirror, B3(-5.85, -5.83, y1 + 1.15, y1 + 2.05, 1.05, 1.95)); blk(1, -5.95, -5.35, 0.95, 2.05);
-    this.sinkPos = new V3(-5.62, y1 + 1.05, 1.5);
+    add('w1left', m.mirror, B3(-5.85, -5.83, y1 + 1.15, y1 + 2.05, 1.05, 1.95)); blk(1, -5.95, -5.38, 0.95, 2.05);
+    this.sinkPos = new V3(-5.64, y1 + 0.95, 1.5); this.tapPos = new V3(-5.72, y1 + 1.12, 1.5);
     add(f1, m.duvet, B3(-2.12, -2.08, y1 + 0.9, y1 + 1.5, 2.2, 2.7));
     // railing around the stairwell on the first floor
     this.railLine(new V3(0.8, y1, 3.35), new V3(5.0, y1, 3.35), f1); this.railLine(new V3(0.8, y1, 3.35), new V3(0.8, y1, 4.35), f1);
@@ -392,10 +402,19 @@ export class Home {
     { add(f2, m.deckwood, B3(-2.0, 2.5, y2 - 0.12, y2, -5.9, -HZ)); for (const x of [-1.95, 2.45]) add(f2, m.trim, B3(x - 0.06, x + 0.06, y2 - 0.9, y2, -5.87, -5.75));
       this.railLine(new V3(-1.95, y2, -4.55), new V3(-1.95, y2, -5.85), f2); this.railLine(new V3(-1.95, y2, -5.85), new V3(2.45, y2, -5.85), f2); this.railLine(new V3(2.45, y2, -5.85), new V3(2.45, y2, -4.55), f2);
       // telescope: tripod and tube pointing out over the river
-      const tp = new V3(1.4, y2, -5.3); this.scopePos = tp.clone();
-      for (let i = 0; i < 3; i++) { const a = i * 2.094; b.add(f2, m.black, tube([new V3(tp.x + Math.cos(a) * 0.35, y2, tp.z + Math.sin(a) * 0.35), new V3(tp.x, y2 + 1.1, tp.z)], [0.015, 0.015], 5)); }
-      const tube1 = cyl(0.06, 0.07, 0.9, 12); tube1.rotateX(Math.PI / 2 - 0.35); tube1.translate(tp.x, y2 + 1.25, tp.z - 0.1); b.add(f2, m.steel, tube1);
-      blk(2, tp.x - 0.3, tp.x + 0.3, tp.z - 0.35, tp.z + 0.35);
+      // telescope on a tripod, aimed up over the river; the eyepiece faces the house at standing eye height
+      const tp = new V3(1.4, y2, -5.42); this.scopePos = tp.clone();
+      const head = new V3(tp.x, y2 + 1.52, tp.z);
+      for (let i = 0; i < 3; i++) { const a = i * 2.094 + 0.5; b.add(f2, m.black, tube([new V3(tp.x + Math.cos(a) * 0.36, y2, tp.z + Math.sin(a) * 0.3), head], [0.016, 0.016], 5)); }
+      b.add(f2, m.black, cyl(0.05, 0.05, 0.08, 10, { x: head.x, y: head.y + 0.02, z: head.z }));
+      const el = 0.38, axis = new V3(0, Math.sin(el), -Math.cos(el)); this.scopeAxis = axis.clone();
+      const c = head.clone().addScaledVector(Y3, 0.1).addScaledVector(axis, 0.05);
+      const tb = cyl(0.058, 0.066, 0.95, 16); tb.rotateX(-(Math.PI / 2 - el)); tb.translate(c.x, c.y, c.z); b.add(f2, m.steel, tb);
+      const dew = cyl(0.072, 0.072, 0.22, 16); dew.rotateX(-(Math.PI / 2 - el)); const dc = c.clone().addScaledVector(axis, 0.44); dew.translate(dc.x, dc.y, dc.z); b.add(f2, m.black, dew);
+      const eye = c.clone().addScaledVector(axis, -0.5); this.eyepiece = eye.clone();
+      const ep = cyl(0.018, 0.022, 0.1, 10); ep.rotateX(-(Math.PI / 2 - el)); const epc = eye.clone().addScaledVector(axis, -0.02); ep.translate(epc.x, epc.y, epc.z); b.add(f2, m.black, ep);
+      this.scopeGrip = { r: c.clone().addScaledVector(axis, -0.3), l: c.clone().addScaledVector(axis, 0.18) };
+      blk(2, tp.x - 0.4, tp.x + 0.4, tp.z - 0.35, tp.z + 0.26);
     }
   }
   stairs(part, name, xa, xb, z0, z1, ya, yb) {
@@ -434,7 +453,7 @@ export class Home {
     const F = frame(HOME.s);
     const dockW = (s, e, y) => this.toLocal(...(() => { const [x, z] = fromSD(s, -(hwL(s) + e)); return [x, y, z]; })());
     this.flights = [
-      { a: new V3(5.4, 0, -6.9), b: new V3(13.2, -4.45, -10.7), w: 1.25 },
+      { a: new V3(6.45, 0, -7.45), b: new V3(12.6, -4.45, -10.75), w: 1.25 },
       { a: new V3(12.6, -4.45, -12.2), b: new V3(6.4, -8.85, -16.3), w: 1.25 },
     ];
     this.landing = { x0: 12.6, x1: 15.0, z0: -12.9, z1: -10.1, y: -4.45 };
@@ -442,8 +461,8 @@ export class Home {
       const L = Math.hypot(fl.b.x - fl.a.x, fl.b.z - fl.a.z), rise = fl.a.y - fl.b.y, n = Math.round(rise / 0.18);
       const dir = new V3(fl.b.x - fl.a.x, 0, fl.b.z - fl.a.z).normalize(); const yaw = Math.atan2(dir.x, dir.z);
       for (let i = 0; i < n; i++) {
-        const t = (i + 0.5) / n; const c = fl.a.clone().lerp(fl.b, t); const yy = fl.a.y - (i + 1) * rise / n + 0.0;
-        const g = box(fl.w, 0.06, L / n + 0.03, {}); g.rotateY(yaw); g.translate(c.x, yy + rise / n, c.z); boxUV(g, 0.5); b.add('out', m.deckwood, g);
+        const t = (i + 0.5) / n; const c = fl.a.clone().lerp(fl.b, t); const top = fl.a.y - (i + 1) * rise / (n + 1);
+        const g = box(fl.w, 0.06, L / n + 0.03, {}); g.rotateY(yaw); g.translate(c.x, top - 0.03, c.z); boxUV(g, 0.5); b.add('out', m.deckwood, g);
       }
       // stringers, posts to the ground and handrails on both sides
       const side = new V3(dir.z, 0, -dir.x);
@@ -533,14 +552,14 @@ export class Home {
     // the cat
     this.cat = makeCat(); g.add(this.cat.g);
     this.catState = { p: new V3(3.6, FY[0], 1.4), yaw: 1.2, mode: 'sit', t: 0, target: null, meowT: 6, purr: false };
-    this.catSpots = [[4.4, 0.9, 'loaf'], [2.6, 0.2, 'sofa'], [-3.0, -6.1, 'loaf'], [-2.6, 1.2, 'sit'], [0.3, -1.0, 'sit'], [-1.0, -5.5, 'loaf']];
+    this.catSpots = [[4.4, 0.9, 'loaf'], [2.6, 0.2, 'sofa'], [-3.0, -6.1, 'loaf'], [-1.1, 0.9, 'sit'], [0.3, -1.0, 'sit'], [-1.0, -5.5, 'loaf']];
   }
   // ---------------------------------------------------------------- walking: surfaces, walls, blockers
   walk() {
     const R = (x0, x1, z0, z1, y, holes = []) => ({ x0, x1, z0, z1, y: typeof y === 'function' ? y : () => y, holes });
     this.surf = [
       R(-HX + 0.2, HX - 0.2, -HZ + 0.2, HZ - 0.2, FY[0], [[0.8, 6, 3.38, 4.5]]),
-      R(-5.4, 0.2, -7.85, -HZ + 0.25, FY[0]), R(1.5, 5.9, -6.55, -HZ + 0.25, FY[0]),
+      R(-5.4, 0.2, -7.85, -HZ + 0.25, FY[0]), R(1.5, 5.9, -6.65, -HZ + 0.25, FY[0]), Object.assign(R(4.95, 6.8, -8.0, -6.55, FY[0]), { clip: (x, z) => (x - 6.45) * this.stairHead.dir.x + (z + 7.45) * this.stairHead.dir.z < 0.02 }),
       R(-HX + 0.2, HX - 0.2, -HZ + 0.2, HZ - 0.2, FY[1], [[0.8, 5.0, 3.3, 4.4], [0.0, 5.0, 2.2, 3.3]]),
       R(-HX + 0.2, HX - 0.2, -HZ + 0.2, HZ - 0.2, FY[2], [[0.8, 5.0, 2.2, 3.3]]), R(-1.85, 2.35, -5.75, -HZ + 0.25, FY[2]),
       R(0.8, 5.0, 3.4, 4.3, (x) => FY[0] + clamp((x - 0.8) / 4.2, 0, 1) * (FY[1] - FY[0])),
@@ -557,11 +576,58 @@ export class Home {
       return segs;
     };
     this.walls = [
-      [...ring({ front: [[-4.2, -1.2], [2.4, 3.4]] }), W(-5.6, -HZ, -5.6, -8), W(-5.6, -8, 0.4, -8), W(0.4, -8, 0.4, -HZ), W(1.45, -HZ, 1.45, -6.55), W(1.45, -6.55, 4.9, -6.55), W(5.95, -HZ, 5.95, -6.1), W(1.6, 3.33, 5.0, 3.33)],
+      [...ring({ front: [[-4.2, -1.2], [2.4, 3.4]] }), W(-5.6, -HZ, -5.6, -8), W(-5.6, -8, 0.4, -8), W(0.4, -8, 0.4, -HZ), W(1.45, -HZ, 1.45, -6.55), W(1.45, -6.55, 4.9, -6.55), W(5.95, -HZ, 5.95, -6.6), W(4.93, -6.6, 4.93, -7.97), W(4.93, -7.97, 6.14, -7.97), W(6.0, -6.57, 6.77, -6.57), W(6.77, -6.57, 6.77, -6.78), W(1.6, 3.33, 5.0, 3.33)],
       [...ring({}), W(0, 2.1, 5.0, 2.1), W(0, -HZ, 0, -1.5), W(0, -0.6, 0, 2.1), W(-HX, 0.4, -3.0, 0.4), W(-2.2, 0.4, -2.0, 0.4), W(-2.0, 0.4, -2.0, HZ), W(0.8, 3.35, 5.0, 3.35), W(0.8, 3.35, 0.8, 4.4)],
       [...ring({ front: [[-0.6, 0.9]] }), W(0.8, 2.25, 5.0, 2.25), W(0.8, 3.25, 5.0, 3.25), W(5.0, 2.25, 5.0, 3.25), W(-1.95, -HZ, -1.95, -5.85), W(-1.95, -5.85, 2.45, -5.85), W(2.45, -5.85, 2.45, -HZ)],
     ];
   }
+  // walkability grid of one floor (house-local, 0.15 m cells) and a shortest path over it, for the last
+  // stretch to a spot or the cat: routes round furniture instead of pushing into it
+  grid(f) {
+    this.grids = this.grids || [];
+    if (this.grids[f]) return this.grids[f];
+    const cs = 0.15, x0 = -7.0, z0 = -8.3, nx = Math.ceil(14.2 / cs), nz = Math.ceil(13.0 / cs);
+    const ok = new Uint8Array(nx * nz); const yl = FY[f];
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      const x = x0 + (i + 0.5) * cs, z = z0 + (j + 0.5) * cs; const w = this.toWorld(x, yl, z);
+      const sy = this.surfY(w.x, w.z, w.y); if (sy === null || Math.abs(sy - w.y) > 0.12) continue;
+      if (this.blocked(w.x, w.z, w.y, 0.27)) continue; ok[j * nx + i] = 1;
+    }
+    return (this.grids[f] = { cs, x0, z0, nx, nz, ok, f });
+  }
+  gridPath(fromW, toW) {
+    const a = this.toLocal(fromW.x, fromW.y, fromW.z), b = this.toLocal(toW.x, toW.y, toW.z); const f = this.floorOf(a.y);
+    if (this.floorOf(b.y) !== f) return null;
+    const G = this.grid(f), { cs, x0, z0, nx, nz, ok } = G;
+    const cell = (p) => [Math.floor((p.x - x0) / cs), Math.floor((p.z - z0) / cs)];
+    const near = ([i, j]) => { if (i >= 0 && j >= 0 && i < nx && j < nz && ok[j * nx + i]) return [i, j]; for (let r = 1; r < 5; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < nx && jj < nz && ok[jj * nx + ii]) return [ii, jj]; } return null; };
+    const s = near(cell(a)), t = near(cell(b)); if (!s || !t) return null;
+    const N = nx * nz, gS = new Float32Array(N).fill(1e9), prev = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
+    const open = [[0, s[1] * nx + s[0]]]; gS[s[1] * nx + s[0]] = 0; const T = t[1] * nx + t[0];
+    const h = (k) => Math.hypot(k % nx - t[0], Math.floor(k / nx) - t[1]);
+    let found = false, it = 0;
+    while (open.length && it++ < 20000) {
+      let bi = 0; for (let q = 1; q < open.length; q++) if (open[q][0] < open[bi][0]) bi = q;
+      const [, k] = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+      if (closed[k]) continue; closed[k] = 1; if (k === T) { found = true; break; }
+      const i = k % nx, j = Math.floor(k / nx);
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue; const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= nz) continue;
+        const kk = jj * nx + ii; if (!ok[kk] || closed[kk]) continue; if (di && dj && (!ok[j * nx + ii] || !ok[jj * nx + i])) continue;
+        const g2 = gS[k] + (di && dj ? 1.414 : 1); if (g2 < gS[kk]) { gS[kk] = g2; prev[kk] = k; open.push([g2 + h(kk), kk]); }
+      }
+    }
+    if (!found) return null;
+    const cellsP = []; for (let k = T; k !== -1; k = prev[k]) cellsP.push(k); cellsP.reverse();
+    // string-pull: keep only corners the walker can't see past
+    // a straight segment counts only if the walker (radius 0.26) fits all along it
+    const cx = (k) => x0 + (k % nx + 0.5) * cs, cz = (k) => z0 + (Math.floor(k / nx) + 0.5) * cs;
+    const los = (k1, k2) => { const ax = cx(k1), az = cz(k1), bx = cx(k2), bz = cz(k2); const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 0.05); for (let q = 1; q < n; q++) { const w = this.toWorld(ax + (bx - ax) * q / n, FY[f], az + (bz - az) * q / n); if (this.blocked(w.x, w.z, w.y, 0.265)) return false; } return true; };
+    const pts = [cellsP[0]]; let q = 0; while (q < cellsP.length - 1) { let r = cellsP.length - 1; while (r > q + 1 && !los(cellsP[q], cellsP[r])) r--; pts.push(cellsP[r]); q = r; }
+    const out = pts.map((k) => this.toWorld(x0 + (k % nx + 0.5) * cs, FY[f], z0 + (Math.floor(k / nx) + 0.5) * cs));
+    out[out.length - 1] = toW.clone().setY(out[out.length - 1].y); return out;
+  }
+  segClear(a, b, r = 0.25) { const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.05); for (let q = 1; q <= n; q++) { const x = a.x + (b.x - a.x) * q / n, z = a.z + (b.z - a.z) * q / n; if (this.blocked(x, z, a.y, r)) return false; } return true; }
   floorOf(yLocal) { return yLocal < FY[1] - 1.2 ? 0 : yLocal < FY[2] - 1.2 ? 1 : 2; }
   // walkable height (world y) near a world point, preferring the level closest to where he is now
   surfY(x, z, yCur) {
@@ -570,6 +636,7 @@ export class Home {
     for (const r of this.surf) {
       if (p.x < r.x0 || p.x > r.x1 || p.z < r.z0 || p.z > r.z1) continue;
       if (r.holes.some(([a, b, c, d]) => p.x > a && p.x < b && p.z > c && p.z < d)) continue;
+      if (r.clip && !r.clip(p.x, p.z)) continue;
       consider(r.y(p.x, p.z));
     }
     for (const fl of this.flights) {
@@ -599,21 +666,21 @@ export class Home {
     if (f === 0 && p.x > HX - 0.1 - r && p.x < HX + 1.0 + r && Math.abs(p.z) < 0.8 + r) return true;
     return false;
   }
-  blockers() { const c = this.catState; if (!c) return []; const w = this.toWorld(c.p.x, c.p.y, c.p.z); return c.mode === 'follow' ? [] : [{ x: w.x, z: w.z, r: 0.22 }]; }
+  blockers() { return []; } // the cat is never in the way: it dodges feet instead (see updateCat)
   // ---------------------------------------------------------------- navigation graph for the automatic walk
   nav() {
     const N = {
       thead: [6.4, this.thead.y, -26.55], pierRoot: [6.4, this.pier.y, -16.2], dBottom: [6.6, -8.85, -16.1], land1: [13.6, -4.45, -11.2], land2: [13.1, -4.45, -12.2],
-      cTop: [5.6, 0, -6.75], porch: [3.9, 0, -5.4], doorOut: [2.9, 0, -5.0], doorIn: [2.9, 0, -3.8], living: [1.5, 0, -1.9], sofaSpot: [3.4, 0, -1.8], fireSide: [4.7, 0, -1.2], hearth: [4.55, 0, 0],
+      cTop: [6.0, 0, -7.3], porch: [3.9, 0, -5.4], doorOut: [2.9, 0, -5.0], doorIn: [2.9, 0, -3.8], living: [1.5, 0, -1.9], sofaSpot: [3.4, 0, -1.8], fireSide: [4.7, 0, -1.2], hearth: [4.5, 0, 0],
       dining: [-1.0, 0, -0.6], kitchen: [-1.45, 0, 3.12], stove: [-3.4, 0, 3.2], sunIn: [-2.7, 0, -4.0], sunroom: [-2.8, 0, -5.9],
       stairFoot: [0.2, 0, 2.7], aBottom: [0.35, 0, 3.85], aTop: [5.4, FY[1], 3.85], landingB: [5.45, FY[1], 2.75], bedDoor: [5.45, FY[1], 1.6], bedroom: [4.9, FY[1], 0.2], bedSide: [4.75, FY[1], 0.9], bedCorner: [4.95, FY[1], -0.95], bedFoot: [3.3, FY[1], -1.25],
-      bedroomW: [1.1, FY[1], -1.05], officeDoor: [0.0, FY[1], -1.05], office: [-1.0, FY[1], -2.4], bathDoor: [-2.6, FY[1], -0.1], bathIn: [-2.6, FY[1], 1.0], sink: [-4.95, FY[1], 1.5],
-      bTop: [0.3, FY[2], 2.75], study: [-1.5, FY[2], 0.5], balDoor: [0.15, FY[2], -3.8], balcony: [0.5, FY[2], -5.2],
+      bedroomW: [1.1, FY[1], -1.05], officeDoor: [0.0, FY[1], -1.05], office: [-1.0, FY[1], -2.4], bathDoor: [-2.6, FY[1], -0.1], bathIn: [-2.6, FY[1], 1.0], sink: [-5.1, FY[1], 1.5],
+      bTop: [0.3, FY[2], 2.75], study: [-1.5, FY[2], 0.5], balDoor: [0.15, FY[2], -3.8], balOut: [0.15, FY[2], -4.95], balcony: [1.4, FY[2], -4.8],
     };
     const E = [['thead', 'pierRoot'], ['pierRoot', 'dBottom'], ['dBottom', 'land2'], ['land2', 'land1'], ['land1', 'cTop'], ['cTop', 'porch'], ['porch', 'doorOut'], ['doorOut', 'doorIn'], ['doorIn', 'living'], ['doorIn', 'sofaSpot'],
       ['living', 'sofaSpot'], ['sofaSpot', 'fireSide'], ['fireSide', 'hearth'], ['living', 'dining'], ['dining', 'kitchen'], ['kitchen', 'stove'], ['dining', 'sunIn'], ['sunIn', 'sunroom'], ['kitchen', 'stairFoot'], ['living', 'stairFoot'], ['stairFoot', 'aBottom'],
       ['aBottom', 'aTop'], ['aTop', 'landingB'], ['landingB', 'bedDoor'], ['bedDoor', 'bedroom'], ['bedroom', 'bedSide'], ['bedroom', 'bedCorner'], ['bedCorner', 'bedFoot'], ['bedFoot', 'bedroomW'], ['bedroomW', 'officeDoor'], ['officeDoor', 'office'], ['office', 'bathDoor'], ['bathDoor', 'bathIn'], ['bathIn', 'sink'],
-      ['landingB', 'bTop'], ['bTop', 'study'], ['study', 'balDoor'], ['balDoor', 'balcony']];
+      ['landingB', 'bTop'], ['bTop', 'study'], ['study', 'balDoor'], ['balDoor', 'balOut'], ['balOut', 'balcony']];
     this.N = {}; for (const k in N) this.N[k] = this.toWorld(...N[k]);
     this.E = {}; for (const [a, b] of E) { (this.E[a] = this.E[a] || []).push(b); (this.E[b] = this.E[b] || []).push(a); }
   }
@@ -694,8 +761,10 @@ export class Home {
     const C = this.catState, cat = this.cat; C.t += dt;
     const pl = player ? this.toLocal(player.x, player.y, player.z) : null;
     const plNear = pl && Math.abs(pl.y - FY[0]) < 0.8 && Math.hypot(pl.x - C.p.x, pl.z - C.p.z) < 5.5 && Math.abs(pl.x) < HX + 3;
-    if (this.petting) { C.mode = 'petted'; }
-    else if (plNear && C.mode !== 'walk' && C.mode !== 'follow' && Math.random() < dt * 0.5) { C.mode = 'follow'; C.t = 0; }
+    if (this.petting && C.mode !== 'walk') { C.mode = 'petted'; }
+    else if (!this.petting && C.mode === 'petted') { C.mode = 'sit'; C.t = 0; }
+    if (this.catHold && !this.petting && (C.mode === 'follow' || (C.mode === 'walk' && !C.called))) { C.mode = C.y > 0.2 ? 'sofa' : 'sit'; C.t = 0; }
+    else if (plNear && !this.catHold && C.mode !== 'walk' && C.mode !== 'follow' && Math.random() < dt * 0.5) { C.mode = 'follow'; C.t = 0; }
     if (C.mode === 'follow') {
       const dx = pl ? pl.x - C.p.x : 0, dz = pl ? pl.z - C.p.z : 0, d = Math.hypot(dx, dz);
       if (!plNear || C.t > 20) { C.mode = 'sit'; C.t = 0; }
@@ -703,12 +772,17 @@ export class Home {
       else { cat.walk(dt, 0); cat.pose('sit', dt); C.yaw = lerpA(C.yaw, Math.atan2(dx, dz), dt * 3); }
     } else if (C.mode === 'walk') {
       const dx = C.target.x - C.p.x, dz = C.target.z - C.p.z, d = Math.hypot(dx, dz);
-      if (d < 0.1) { C.mode = C.target.m; C.t = 0; }
+      if (d < 0.1) { C.mode = C.target.m; C.t = 0; C.called = false; }
       else { C.yaw = lerpA(C.yaw, Math.atan2(dx, dz), dt * 4); const sp = 0.55; this.catStep(dx / d * sp * dt, dz / d * sp * dt); cat.walk(dt, sp); if (C.t > 25) { C.mode = 'sit'; } }
     } else if (C.mode === 'petted') { cat.walk(dt, 0); cat.pose('sit', dt); }
     else {
       cat.walk(dt, 0); cat.pose(C.mode === 'loaf' ? 'loaf' : C.mode === 'sofa' ? 'loaf' : 'sit', dt);
       if (C.t > 14 + Math.random() * 20) { const s = this.catSpots[Math.floor(Math.random() * this.catSpots.length)]; C.target = { x: s[0], z: s[1], m: s[2] }; C.mode = 'walk'; C.t = 0; }
+    }
+    // cats get out from under feet: if he walks into it, it trots aside
+    if (pl && Math.abs(pl.y - FY[0]) < 0.8 && C.mode !== 'petted' && !(C.y > 0.2)) {
+      const dx = C.p.x - pl.x, dz = C.p.z - pl.z, d = Math.hypot(dx, dz);
+      if (d < 0.62 && d > 1e-3) { const push = (0.62 - d) * 6 * dt; this.catStep(dx / d * push, dz / d * push); if (C.mode !== 'walk') cat.walk(dt, 0.8); }
     }
     // the sofa spot is up on the cushions
     const onSofa = C.p.x > 2.1 && C.p.x < 3.05 && Math.abs(C.p.z) < 1.1;
@@ -718,12 +792,26 @@ export class Home {
     C.meowT -= dt; if (C.meowT <= 0) { C.meowT = 12 + Math.random() * 25; if (plNear && this.audio) { const w = this.toWorld(C.p.x, FY[0], C.p.z); this.audio.amb && this.audio.amb.meow(w.x, w.z); } }
     if (this.audio && this.audio.amb) { const want = !!this.petting; if (want !== C.purr) { C.purr = want; this.audio.amb.setPurr(want); } }
   }
+  catInside(x, z) { return (x > -HX + 0.3 && x < HX - 0.3 && z > -HZ + 0.3 && z < HZ - 0.3 && !(x > 0.8 && z > 3.3)) || (x > -5.3 && x < 0.1 && z > -7.8 && z < -4.4 && (x < -1.2 || z < -4.6)) || (z > -4.7 && z < -4.3 && x > -4.1 && x < -1.3); }
   catStep(dx, dz) {
     const C = this.catState; const nx = C.p.x + dx, nz = C.p.z + dz;
-    const inside = (x, z) => (x > -HX + 0.3 && x < HX - 0.3 && z > -HZ + 0.3 && z < HZ - 0.3 && !(x > 1.6 && z > 3.3)) || (x > -5.3 && x < 0.1 && z > -7.8 && z < -4.4 && (x < -1.2 || z < -4.6)) || (z > -4.7 && z < -4.3 && x > -4.1 && x < -1.3);
+    const inside = (x, z) => this.catInside(x, z);
     const hitsFurn = (x, z) => this.blocks[0].some(([a, b, c, d]) => x > a - 0.12 && x < b + 0.12 && z > c - 0.12 && z < d + 0.12 && !(a === 2.1 && b === 3.05));
     if (inside(nx, nz) && !hitsFurn(nx, nz)) { C.p.x = nx; C.p.z = nz; } else if (inside(nx, C.p.z) && !hitsFurn(nx, C.p.z)) C.p.x = nx; else if (inside(C.p.x, nz) && !hitsFurn(C.p.x, nz)) C.p.z = nz;
   }
+  catOnSofa() { const C = this.catState; return (C.y || 0) > 0.2; }
+  // ask the cat to come and sit in front of someone at a world position, facing a world direction
+  callCat(posW, fwdW) {
+    const C = this.catState; const p = this.toLocal(posW.x, posW.y, posW.z); const f = this.toLocal(posW.x + fwdW.x, posW.y, posW.z + fwdW.z).sub(p).setY(0).normalize();
+    // a spot in front of him (or to the side) that the cat can walk to in a straight line
+    const reach = (x, z) => { const n = Math.ceil(Math.hypot(x - C.p.x, z - C.p.z) / 0.08); for (let j = 1; j <= n; j++) { const t = j / n; if (!this.catFree(C.p.x + (x - C.p.x) * t, C.p.z + (z - C.p.z) * t) && !(this.catOnSofa() && j < n * 0.4)) return false; } return true; };
+    for (const [d, a] of [[0.62, 0], [0.62, 0.5], [0.62, -0.5], [0.7, 0.9], [0.7, -0.9], [0.7, 1.4], [0.7, -1.4], [0.7, Math.PI]]) {
+      const dir = f.clone().applyAxisAngle(new V3(0, 1, 0), a); const x = p.x + dir.x * d, z = p.z + dir.z * d;
+      if (this.catFree(x, z) && reach(x, z)) { C.target = { x, z, m: 'sit' }; C.mode = 'walk'; C.t = 0; C.called = true; return true; }
+    }
+    return false;
+  }
+  catFree(x, z) { return this.catInside(x, z) && !this.blocks[0].some(([a, b, c, d]) => x > a - 0.12 && x < b + 0.12 && z > c - 0.12 && z < d + 0.12); }
   catWorld() { const C = this.catState; return this.toWorld(C.p.x, FY[0] + (C.y || 0), C.p.z); }
   fireSound() { const w = this.toWorld(this.firePos.x, 0, this.firePos.z); return { x: w.x, z: w.z, on: true }; }
   tvSound() { const w = this.toWorld(this.tvPos.x, 0, this.tvPos.z); return { x: w.x, z: w.z, on: this.tvOn }; }

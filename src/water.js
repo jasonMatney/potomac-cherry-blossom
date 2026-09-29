@@ -144,12 +144,14 @@ function initSim(renderer) {
       ${PRESS_GLSL}
       varying vec2 vUv;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+      float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y); }
       void main(){
         vec2 uv = vUv + uShift + vec2(0.0, uFlow * uDt / uSize.y);
         vec4 c = texture2D(tPrev, uv);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) c = vec4(0.0);
         float h = c.r, hp = c.g;
-        float foam = c.b * (1.0 - 0.3*uDt);
+        float foam = c.b * (1.0 - 0.5*uDt);
         float calm = c.a * (1.0 - 0.07*uDt);
         vec2 sd = uOrigin + vec2(vUv.y*uSize.y, vUv.x*uSize.x);
         for (int i = 0; i < ${MAXB}; i++) {
@@ -164,25 +166,26 @@ function initSim(renderer) {
           if (el < 1.35) {
             float x = along / bs.x;
             float band = smoothstep(1.35, 0.85, el) * smoothstep(0.5, 1.0, el);
-            foam = max(foam, band * speedK * 0.45 * bs.z * smoothstep(-0.9, 0.2, x));
+            foam = max(foam, band * speedK * 0.12 * bs.z * smoothstep(-0.9, 0.2, x));
           }
           // prop wash behind the stern: churned foam and the calm "scar" lane it leaves
           vec2 st = rel + vec2(ch, sh) * bs.x * 1.02;
           float sa = st.x*ch + st.y*sh, sl = -st.x*sh + st.y*ch;
           if (sa < 0.5 && sa > -7.0) {
-            float wdt = 0.25 + (-min(sa, 0.0))*0.09;
+            float wdt = 0.3 + (-min(sa, 0.0))*0.1;
             float pw = exp(-sl*sl / wdt) * smoothstep(0.5, -0.5, sa) * exp(min(sa, 0.0)*0.22) * bs.w;
             float spd = clamp(abs(b.w)/3.0, 0.0, 1.0);
-            float churn = 0.3 + 0.7*hash(floor(sd*2.3) + floor(uTime*9.0));
-            foam = max(foam, pw * spd * 0.85 * churn * (1.0 - 0.25*smoothstep(7.0, 11.0, abs(b.w))));
+            float churn = 0.55 + 0.45*vnoise(sd*1.1 + vec2(uTime*1.7, -uTime*1.3));
+            foam = max(foam, pw * spd * 0.95 * churn);
             calm = max(calm, exp(-sl*sl / (wdt*2.2)) * smoothstep(0.5, -1.5, sa) * spd * bs.w);
-            h += pw * spd * 0.004 * (hash(floor(sd*3.1) + floor(uTime*20.0)) - 0.5);
+            // boils and swirls in the prop wash: a smooth, evolving bump field
+            h += pw * spd * 0.0025 * (vnoise(sd*1.6 + vec2(uTime*2.3, uTime*1.1)) - 0.5) * uDt * 60.0;
           }
           // bow wave foam at the bow shoulders
           vec2 bw = rel - vec2(ch, sh) * bs.x * 0.75;
           float ba = bw.x*ch + bw.y*sh, bl = -bw.x*sh + bw.y*ch;
           float bowF = exp(-pow(abs(bl) - bs.y*(0.95 + max(-ba, 0.0)*0.18), 2.0)*5.0) * smoothstep(-1.8, -0.2, ba) * smoothstep(0.9, -0.2, ba);
-          foam = max(foam, bowF * speedK * 0.5 * bs.z * (0.6 + 0.4*hash(floor(sd*2.7) + floor(uTime*12.0))));
+          foam = max(foam, bowF * speedK * 0.22 * bs.z * (0.7 + 0.3*vnoise(sd*1.4 + vec2(uTime*2.0, 0.0))));
         }
         // raindrops: each one a tiny impulse that rings outward
         if (uRain > 0.01) {
@@ -439,11 +442,11 @@ export function buildWater(scene, renderer, pipeline) {
           vec2 g2 = vec2(hx, hy) / (2.0*${SIM_DS.toFixed(3)}) * edge;
           // (d,s) gradient -> world xz
           vec2 gw = right * g2.x + fwd * g2.y;
-          grad += gw * 1.6;
+          grad += gw * 3.0;
           wakeH = sc.r * edge;
           // whitecaps only where wake crests are steep and high, broken up by noise
-          float steep = smoothstep(0.24, 0.5, length(g2)) * smoothstep(0.13, 0.28, sc.r);
-          simFoam = max(sc.b, steep * 1.0) * edge;
+          float steep = smoothstep(0.34, 0.6, length(g2)) * smoothstep(0.16, 0.32, sc.r);
+          simFoam = max(sc.b, steep * 0.6) * edge;
           simCalm = sc.a * edge;
         }
         // glassy scar left in the wake: suppress small ripples there
@@ -497,13 +500,23 @@ export function buildWater(scene, renderer, pipeline) {
         float fnoise2 = nrmAt(fuvB).y*0.5+0.5;
         float fbreak = fnoise*0.55 + fnoise2*0.45;
         float obsF = fm.r * smoothstep(0.62 - fm.r*0.35, 0.95 - fm.r*0.3, fbreak);
-        // lacy foam: as it decays it breaks into streaks and patches instead of fading as a sheet
-        float lace = (nrmAt(wp*0.62 + vec2(0.31, 0.77)).x*0.5+0.5)*0.55 + (nrmAt(wp*1.7 + vec2(0.13, 0.41)).y*0.5+0.5)*0.45;
-        float wakeF = smoothstep(1.02 - simFoam, 1.2 - simFoam*0.75, lace + 0.18) * min(1.0, simFoam*1.8);
+        // wake foam: its lace pattern is carried downstream with the water and pushed around by the waves
+        // (so it moves with the surface), and edges are antialiased so it never breaks into pixel sparkle
+        vec2 fwp = wp - flowDir*T*cur*0.9 + N.xz*0.9;
+        float lace = (nrmAt(fwp*0.55 + vec2(0.31, 0.77)).x*0.5+0.5)*0.6 + (nrmAt(fwp*1.45 + vec2(0.13, 0.41) + T*0.03).y*0.5+0.5)*0.4;
+        float thr = 1.05 - simFoam*0.95;
+        float aa = max(fwidth(lace)*1.5, 0.05);
+        float wakeF = smoothstep(thr - aa, thr + 0.1 + aa, lace + 0.12) * min(1.0, simFoam*1.4);
         float shore = smoothstep(0.14, 0.02, depth) * smoothstep(0.5, 0.75, fnoise2) * 0.35;
-        float foam = clamp(obsF*0.8 + wakeF + shore, 0.0, 0.92);
-        vec3 foamCol = (uAmb*0.95 + uSunCol*uSunI*max(uSunDir.y,0.0)*0.8 + uFlash*0.8) * vec3(0.93, 0.95, 0.94);
-        col = mix(col, foamCol, foam*0.85);
+        float foam = clamp(obsF*0.8 + wakeF*0.85 + shore, 0.0, 0.85);
+        // the water under fresh foam is full of bubbles: a pale, milky turquoise rather than a hard white sheet
+        vec3 lightC = uAmb*0.95 + uSunCol*uSunI*max(uSunDir.y,0.0)*0.8 + uFlash*0.8;
+        col = mix(col, lightC * vec3(0.5, 0.64, 0.6), smoothstep(0.35, 0.9, simFoam) * 0.3);
+        // wake wave crests glow a little where light passes through their thin tops
+        col += uWaterCol * lightC * clamp(wakeH*4.0, 0.0, 0.6) * 0.5;
+        col *= 1.0 - clamp(-wakeH*3.0, 0.0, 0.18);
+        vec3 foamCol = lightC * vec3(0.9, 0.94, 0.93);
+        col = mix(col, foamCol, foam*0.8);
         // --- petal rafts in slack water
         vec2 pUv = wp*0.19 + flowDir*T*cur*0.19*0.5 + N.xz*0.01;
         vec4 pt = texture2D(tPetal, pUv);
