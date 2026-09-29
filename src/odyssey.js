@@ -43,12 +43,12 @@ export function buildOdyssey() {
   const g = new THREE.Group();
   const L = OD.L, B = OD.B;
   const M = {
-    hullDark: std({ map: TEX.fiber.map, color: 0x1a2130, roughness: 0.3 }, { wet: 0.6 }),
-    white: std({ map: TEX.fiber.map, color: 0xe0dfda, roughness: 0.35 }, { wet: 0.6 }),
+    hullDark: std({ map: TEX.fiber.map, color: 0x1a2130, roughness: 0.55 }, { wet: 0.6 }),
+    white: std({ map: TEX.fiber.map, color: 0xe0dfda, roughness: 0.6 }, { wet: 0.6 }),
     deck: std({ map: TEX.deck.map, color: 0xb9b3a6, roughness: 0.7 }, { wet: 1 }),
-    glass: std({ color: 0x1f5a60, roughness: 0.06, metalness: 0.35, envMapIntensity: 1.4, emissive: 0xffffff, emissiveMap: interiorTexture(), emissiveIntensity: 0 }, { wet: 0 }),
-    roofGlass: std({ color: 0x2c6e78, roughness: 0.05, metalness: 0.5, envMapIntensity: 1.5, emissive: 0x3aa6c0, emissiveIntensity: 0 }, { wet: 0 }),
-    frame: std({ color: 0xe9e8e4, roughness: 0.35, metalness: 0.3 }, { wet: 0.4 }),
+    glass: std({ color: 0x173f48, roughness: 0.3, metalness: 0.0, envMapIntensity: 0.45, emissive: 0xffffff, emissiveMap: interiorTexture(), emissiveIntensity: 0 }, { wet: 0 }),
+    roofGlass: std({ color: 0x24585f, roughness: 0.28, metalness: 0.0, envMapIntensity: 0.5, emissive: 0x3aa6c0, emissiveIntensity: 0 }, { wet: 0 }),
+    frame: std({ color: 0xe9e8e4, roughness: 0.55, metalness: 0.0 }, { wet: 0.4 }),
     rail: std({ color: 0xdfe4e8, roughness: 0.2, metalness: 1 }),
     dark: std({ color: 0x22262a, roughness: 0.5 }),
     red: new THREE.MeshBasicMaterial({ color: 0xff2a1a }), green: new THREE.MeshBasicMaterial({ color: 0x22ff66 }), white2: new THREE.MeshBasicMaterial({ color: 0xfff2dc }),
