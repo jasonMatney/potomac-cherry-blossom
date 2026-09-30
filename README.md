@@ -42,11 +42,25 @@ To publish, copy `dist/index.html` to `docs/index.html`.
 
 `src/` holds the scene modules (`main.js` is the entry); `template.html` is the page shell the bundle is injected into. `tools/prep.mjs` trims the source character packs into `assets/` (it expects the original Quaternius files locally).
 
+## Characters (MakeHuman pipeline)
+
+The skipper is a [MakeHuman](http://www.makehumancommunity.org/) character built headlessly, with no GUI:
+
+```sh
+pip install bpy   # Blender as a Python module; MPFB 2 installed as an extension, plus the MakeHuman CC0 system assets
+python3 tools/make_character.py tools/specs/skipper.json /tmp/skipper_raw.glb   # body, face, hair, clothes, game_engine rig
+node tools/pack_character.mjs /tmp/skipper_raw.glb /tmp/skipper.glb 1024        # webp textures, dedup, weld
+node tools/retarget.mjs /tmp/skipper.glb assets/mh_skipper.glb                  # retarget the Quaternius clips onto the MH rig
+```
+
+A spec is JSON: phenotype sliders (gender, age, muscle, weight, height, proportions, race mix), skin, eyes, hair, eyebrows, proxy mesh and a list of clothes. `retarget.mjs` first poses the MH A-pose rest into the library's T-pose rest bone by bone, then transfers each frame's world-space rotation delta and scales pelvis motion by leg length. The in-game IK (helm grip, telescope, sink, bed) runs on top via `GRig`. Don't quantize the output: it splits the skin and breaks the mesh.
+
 ## Tests
 
 `test/multi.py` drives a headless Chromium (Playwright) through a JSON list of `[name, js]` steps against `dist/index.html` and saves screenshots to `shots/`. Run from the repo root.
 
 ## Credits
 
-- Characters: [Quaternius](https://quaternius.com/) Universal Base Characters and Universal Animation Library (CC0)
+- Skipper: [MakeHuman](http://www.makehumancommunity.org/) / MPFB 2 system assets (CC0)
+- Other characters: [Quaternius](https://quaternius.com/) Universal Base Characters and Universal Animation Library (CC0)
 - Rendering: [three.js](https://threejs.org/) (MIT)

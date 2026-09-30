@@ -9,6 +9,7 @@ import MALE_GLB from '../assets/male.glb';
 import FEMALE_GLB from '../assets/female.glb';
 import ANIMS_GLB from '../assets/anims.glb';
 import MALE_DARK_JPG from '../assets/male_dark.jpg';
+import MH_SKIPPER_GLB from '../assets/mh_skipper.glb';
 
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const T = {}; // templates
@@ -37,6 +38,45 @@ export async function loadHumans() {
     T.clips[c.name] = c;
   }
   T.maleDark = await imgTexture(MALE_DARK_JPG);
+  // MakeHuman characters (built by tools/make_character.py, animation library retargeted by tools/retarget.mjs)
+  T.mh = {};
+  const sk = await parse(MH_SKIPPER_GLB);
+  const clips = {}; for (const c of sk.animations) clips[c.name] = c;
+  T.mh.skipper = { gltf: sk, clips };
+}
+
+// A MakeHuman character: realistic body, face, hair and clothes from the model itself; materials are re-made
+// with the scene's material patches (wetness, lights, fog) and the generic IK rig drives the same bone names.
+export function buildMHCharacter(which, o = {}) {
+  const tpl = T.mh[which];
+  const root = new THREE.Group();
+  const model = skClone(tpl.gltf.scene);
+  model.rotation.y = Math.PI; // glTF faces +Z; our actors face -Z
+  root.add(model); root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(model); const rawH = box.max.y - box.min.y;
+  model.scale.setScalar((o.height ?? 1.8) / rawH);
+  let skeleton = null;
+  model.traverse((m) => {
+    if (!m.isSkinnedMesh) return;
+    skeleton = m.skeleton;
+    const src = m.material, nm = (m.name + ' ' + (src.name || '')).toLowerCase();
+    const cut = /eyebrow|eyelash|short0|long0|bob0|ponytail|braid|afro/.test(nm); // alpha-cut cards
+    const eyes = /low-poly|high-poly/.test(nm);
+    m.material = std({ map: src.map, normalMap: eyes ? null : src.normalMap, roughness: eyes ? 0.15 : cut ? 0.75 : /skin|body|generic/.test(nm) ? 0.6 : 0.85,
+      alphaTest: cut ? 0.4 : 0, transparent: false, side: cut ? THREE.DoubleSide : THREE.FrontSide, color: 0xffffff }, { wet: cut ? 0.6 : 0.7 });
+    m.castShadow = !/eyebrow|eyelash/.test(nm); m.receiveShadow = true; m.frustumCulled = false;
+  });
+  const parts = { root, model };
+  parts.rig = new GRig(root, model, skeleton);
+  // where the eyes are, relative to the head bone (from the eye mesh at rest), for poses that aim the gaze
+  model.traverse((m) => { if (m.isSkinnedMesh && /low-poly|high-poly/.test(m.name.toLowerCase()) && !parts.eyeLocal) {
+    m.geometry.computeBoundingBox(); const c = m.geometry.boundingBox.getCenter(new V3()).applyMatrix4(m.matrixWorld);
+    parts.eyeLocal = parts.rig.b.Head.worldToLocal(c); } });
+  parts.mixer = new THREE.AnimationMixer(model);
+  parts.play = (name, w = 1, speed = 1) => { const c = tpl.clips[name]; if (!c) return null; const a = parts.mixer.clipAction(c); a.setEffectiveWeight(w); a.timeScale = speed; a.play(); return a; };
+  parts.setFlutter = () => {};
+  parts.bindUnit = 1;
+  return parts;
 }
 
 // ------------------------------------------------------------------ body-region classification
@@ -499,7 +539,15 @@ export class GRig {
       this.restLocal[n] = b.quaternion.clone();
     }
     for (const n in CH) { const d = this.restPG[CH[n]].clone().sub(this.restPG[n]); this.len[n] = d.length(); this.restDir[n] = d.normalize(); }
-    this.palmRest = { l: new V3(0, -1, 0), r: new V3(0, -1, 0) };
+    // palms face down in a T-pose; for other rest poses (MakeHuman's A-pose) turn that with the arm
+    this.palmRest = {};
+    // palm normal from the knuckles: finger direction x (index knuckle - pinky knuckle), signed per hand
+    for (const sd of ['l', 'r']) {
+      const hd = this.restDir['hand_' + sd], i1 = this.restPG['index_01_' + sd], p1 = this.restPG['pinky_01_' + sd];
+      if (!i1 || !p1) { this.palmRest[sd] = new V3(0, -1, 0); continue; }
+      const n = new V3().crossVectors(hd, i1.clone().sub(p1)).normalize(); if (sd === 'r') n.negate();
+      this.palmRest[sd] = n;
+    }
   }
   worldPos(n, out = new V3()) { return this.b[n].getWorldPosition(out); }
   gQ() { return this.root.getWorldQuaternion(new Q()); }

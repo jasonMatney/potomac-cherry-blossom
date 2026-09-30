@@ -404,7 +404,7 @@ export class Home {
       // telescope: tripod and tube pointing out over the river
       // telescope on a tripod, aimed up over the river; the eyepiece faces the house at standing eye height
       const tp = new V3(1.4, y2, -5.42); this.scopePos = tp.clone();
-      const head = new V3(tp.x, y2 + 1.52, tp.z);
+      const head = new V3(tp.x, y2 + 1.66, tp.z);
       for (let i = 0; i < 3; i++) { const a = i * 2.094 + 0.5; b.add(f2, m.black, tube([new V3(tp.x + Math.cos(a) * 0.36, y2, tp.z + Math.sin(a) * 0.3), head], [0.016, 0.016], 5)); }
       b.add(f2, m.black, cyl(0.05, 0.05, 0.08, 10, { x: head.x, y: head.y + 0.02, z: head.z }));
       const el = 0.38, axis = new V3(0, Math.sin(el), -Math.cos(el)); this.scopeAxis = axis.clone();

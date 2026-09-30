@@ -1,6 +1,6 @@
 // Outfits for the three characters
 import * as THREE from 'three';
-import { buildCharacter, humanTex } from './humans.js';
+import { buildCharacter, buildMHCharacter, humanTex } from './humans.js';
 import { std, U } from './matpatch.js';
 import TEX from './tex.js';
 
@@ -14,6 +14,7 @@ function fab(color, rough, uFlut, o = {}) {
 }
 
 export function makeSkipperChar(o = {}) {
+  if (!o.legacy && humanTex().mh && humanTex().mh.skipper) return buildMHCharacter('skipper', { height: o.height ?? 1.78 });
   const uFlut = { value: new THREE.Vector3() };
   const jk = o.jacket ?? 0xe4ae20;
   const c = buildCharacter('male', {

@@ -256,7 +256,7 @@ export class Stops {
       const toSpot = S.spotP.clone().sub(cart.position); cart.rotation.y = Math.atan2(toSpot.x, toSpot.z); sc.add(cart);
       addWalkBlock({ x: cart.position.x, z: cart.position.z, hx: 0.85, hz: 0.5, yaw: cart.rotation.y });
       this.cart = cart;
-      const v = this.vendor = makeSkipperChar({ jacket: 0xf4f1ea, pants: 0x30343c, hair: 0x2a2018, height: 1.72 });
+      const v = this.vendor = makeSkipperChar({ legacy: true, jacket: 0xf4f1ea, pants: 0x30343c, hair: 0x2a2018, height: 1.72 });
       const back = cart.position.clone().addScaledVector(toSpot.clone().setY(0).normalize(), -0.85);
       v.root.position.set(back.x, groundAt(back.x, back.z), back.z);
       v.root.rotation.y = Math.atan2(-toSpot.x, -toSpot.z); sc.add(v.root);
@@ -849,7 +849,7 @@ export class Stops {
   leanEyeTo(target, k) {
     const rig = this.rig, g = this.char.root, s = this.leanSign();
     const fwd = new V3(0, 0, -1).applyQuaternion(g.getWorldQuaternion(new Q()));
-    const eyeOf = () => rig.worldPos('Head').addScaledVector(fwd, 0.09).addScaledVector(Y, 0.07);
+    const eyeOf = () => this.char.eyeLocal ? rig.b.Head.localToWorld(this.char.eyeLocal.clone()) : rig.worldPos('Head').addScaledVector(fwd, 0.09).addScaledVector(Y, 0.07);
     const e0 = eyeOf(), hip = rig.worldPos('spine_01'); const L = Math.max(0.3, Math.hypot(e0.y - hip.y, e0.clone().sub(hip).dot(fwd)));
     const f = target.clone().sub(hip).dot(fwd), up = target.y - hip.y;
     const a = clamp(Math.atan2(f, Math.max(0.2, up)) - Math.atan2(e0.clone().sub(hip).dot(fwd), e0.y - hip.y), -0.25, 0.9) * k;
