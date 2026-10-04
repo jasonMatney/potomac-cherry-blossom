@@ -73,6 +73,12 @@ export function buildMHCharacter(which, o = {}) {
     m.geometry.computeBoundingBox(); const c = m.geometry.boundingBox.getCenter(new V3()).applyMatrix4(m.matrixWorld);
     parts.eyeLocal = parts.rig.b.Head.worldToLocal(c); } });
   parts.mixer = new THREE.AnimationMixer(model);
+  // The mixer only writes a bone when its animated value changed since the last frame, but the pose code on top
+  // (lean, IK, look) is additive. Put every bone back to what the mixer last produced before each update, so a
+  // bone the clip holds still can't accumulate last frame's adjustments.
+  { const bones = skeleton.bones, base = bones.map((b) => ({ q: b.quaternion.clone(), p: b.position.clone() })); const up = parts.mixer.update.bind(parts.mixer);
+    parts.mixer.update = (dt) => { for (let i = 0; i < bones.length; i++) { bones[i].quaternion.copy(base[i].q); bones[i].position.copy(base[i].p); }
+      up(dt); for (let i = 0; i < bones.length; i++) { base[i].q.copy(bones[i].quaternion); base[i].p.copy(bones[i].position); } return parts.mixer; }; }
   parts.play = (name, w = 1, speed = 1) => { const c = tpl.clips[name]; if (!c) return null; const a = parts.mixer.clipAction(c); a.setEffectiveWeight(w); a.timeScale = speed; a.play(); return a; };
   parts.setFlutter = () => {};
   parts.bindUnit = 1;
@@ -486,6 +492,12 @@ export function buildCharacter(kind, o) {
   parts.srcCount = srcBodies.length; parts.bodyAttrs = bodies.map((b) => b.geometry.attributes.position.uuid || b.geometry.attributes.position.count);
   parts.rig = new GRig(root, model, skeleton);
   parts.mixer = new THREE.AnimationMixer(model);
+  // The mixer only writes a bone when its animated value changed since the last frame, but the pose code on top
+  // (lean, IK, look) is additive. Put every bone back to what the mixer last produced before each update, so a
+  // bone the clip holds still can't accumulate last frame's adjustments.
+  { const bones = skeleton.bones, base = bones.map((b) => ({ q: b.quaternion.clone(), p: b.position.clone() })); const up = parts.mixer.update.bind(parts.mixer);
+    parts.mixer.update = (dt) => { for (let i = 0; i < bones.length; i++) { bones[i].quaternion.copy(base[i].q); bones[i].position.copy(base[i].p); }
+      up(dt); for (let i = 0; i < bones.length; i++) { base[i].q.copy(bones[i].quaternion); base[i].p.copy(bones[i].position); } return parts.mixer; }; }
   parts.play = (name, w = 1, speed = 1) => { const c = T.clips[name]; if (!c) return null; const a = parts.mixer.clipAction(c); a.setEffectiveWeight(w); a.timeScale = speed; a.play(); return a; };
   // local-space helper for the flutter uniform: world displacement -> bind space
   parts.setFlutter = (worldVec) => {
